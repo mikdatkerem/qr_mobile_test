@@ -210,15 +210,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.background,
       appBar: AppBar(
-        // Başlık yok, ortada kamera
         centerTitle: true,
-        title: EmbeddedScanner(
-          controller: _scannerController,
-          onDetect: _onQrDetected,
-          isLoading: _isLoading,
-        ),
         actions: [
-          // Test butonu
           IconButton(
             icon: const Icon(Icons.qr_code),
             tooltip: 'Test QR',
@@ -230,6 +223,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                // Kamera — tam genişlik bant
+                EmbeddedScanner(
+                  controller: _scannerController,
+                  onDetect: _onQrDetected,
+                  isLoading: _isLoading,
+                ),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),

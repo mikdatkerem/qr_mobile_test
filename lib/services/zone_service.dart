@@ -9,10 +9,8 @@ class ZoneService {
 
   ZoneService({http.Client? client}) : _client = client ?? http.Client();
 
-  /// Backend hazır olunca bu metodu kullan.
-  /// Şu an hardcoded test verisi döndürüyor.
   Future<List<ZoneModel>> getZones() async {
-    // TODO: Backend hazır olunca aşağıdaki satırı aç, _hardcodedZones'u sil.
+    // TODO: Backend hazır olunca aşağıdaki satırı aç, hardcodedZones'u sil.
     // return _fetchZonesFromApi();
     return Future.value(hardcodedZones);
   }
@@ -42,90 +40,78 @@ class ZoneService {
   void dispose() => _client.close();
 }
 
-// ─── YOL KOORDİNATLARI ───────────────────────────────────────────────────────
-// SVG viewBox boyutuna göre ayarlandı.
-// Her ZoneModel'in x,y'si kutucuğun sol üst köşesi (merkez = x+40, y+30).
+// ─── QR ZONE KOORDİNATLARI ───────────────────────────────────────────────────
+// Her ZoneModel'in x,y merkez koordinatı — graph_data.dart'taki MapNode
+// koordinatlarıyla eşleştirilmiştir (width/height dokunma alanı için).
 // Backend hazır olunca bu listeyi sil, _fetchZonesFromApi() kullan.
-// ignore: library_private_types_in_public_api
 const List<ZoneModel> hardcodedZones = [
+  // Sağ sütun: START (alt) → P13 (üst köşe)
   ZoneModel(
-      id: "P1", label: "insideloc 1", x: 560, y: 550, width: 80, height: 60),
+      id: "START", label: "Başlangıç", x: 560, y: 970, width: 80, height: 60),
   ZoneModel(
-      id: "P2", label: "insideloc 2", x: 560, y: 520, width: 80, height: 60),
+      id: "P1", label: "İç Konum 1", x: 560, y: 870, width: 80, height: 60),
   ZoneModel(
-      id: "P3", label: "insideloc 3", x: 560, y: 490, width: 80, height: 60),
+      id: "P2", label: "İç Konum 2", x: 560, y: 790, width: 80, height: 60),
   ZoneModel(
-      id: "P4", label: "insideloc 4", x: 560, y: 460, width: 80, height: 60),
+      id: "P3", label: "İç Konum 3", x: 560, y: 720, width: 80, height: 60),
   ZoneModel(
-      id: "P5", label: "insideloc 5", x: 560, y: 430, width: 80, height: 60),
+      id: "P4", label: "İç Konum 4", x: 560, y: 660, width: 80, height: 60),
   ZoneModel(
-      id: "P6", label: "insideloc 6", x: 560, y: 400, width: 80, height: 60),
+      id: "P5", label: "İç Konum 5", x: 560, y: 600, width: 80, height: 60),
   ZoneModel(
-      id: "P7", label: "insideloc 7", x: 560, y: 370, width: 80, height: 60),
+      id: "P6", label: "İç Konum 6", x: 560, y: 540, width: 80, height: 60),
   ZoneModel(
-      id: "P8", label: "insideloc 8", x: 560, y: 340, width: 80, height: 60),
+      id: "P7", label: "İç Konum 7", x: 560, y: 460, width: 80, height: 60),
   ZoneModel(
-      id: "P9", label: "insideloc 9", x: 560, y: 310, width: 80, height: 60),
+      id: "P8", label: "İç Konum 8", x: 560, y: 400, width: 80, height: 60),
   ZoneModel(
-      id: "P10", label: "insideloc 10", x: 560, y: 280, width: 80, height: 60),
+      id: "P9", label: "İç Konum 9", x: 560, y: 330, width: 80, height: 60),
   ZoneModel(
-      id: "P11", label: "insideloc 11", x: 560, y: 250, width: 80, height: 60),
+      id: "P10", label: "İç Konum 10", x: 560, y: 270, width: 80, height: 60),
   ZoneModel(
-      id: "P12", label: "insideloc 12", x: 560, y: 220, width: 80, height: 60),
+      id: "P11", label: "İç Konum 11", x: 560, y: 210, width: 80, height: 60),
   ZoneModel(
-      id: "P13", label: "insideloc 13", x: 560, y: 190, width: 80, height: 60),
+      id: "P12", label: "İç Konum 12", x: 560, y: 120, width: 80, height: 60),
   ZoneModel(
-      id: "P14", label: "insideloc 14", x: 560, y: 160, width: 80, height: 60),
+      id: "P13", label: "İç Konum 13", x: 560, y: 70, width: 80, height: 60),
+  // Üst geçiş: P14 → P17
   ZoneModel(
-      id: "P15", label: "insideloc 15", x: 560, y: 130, width: 80, height: 60),
+      id: "P14", label: "İç Konum 14", x: 455, y: 50, width: 80, height: 60),
   ZoneModel(
-      id: "P16", label: "insideloc 16", x: 560, y: 100, width: 80, height: 60),
+      id: "P15", label: "İç Konum 15", x: 395, y: 50, width: 80, height: 60),
   ZoneModel(
-      id: "P17", label: "insideloc 17", x: 560, y: 70, width: 80, height: 60),
+      id: "P16", label: "İç Konum 16", x: 355, y: 50, width: 80, height: 60),
   ZoneModel(
-      id: "P18", label: "insideloc 18", x: 560, y: 40, width: 80, height: 60),
+      id: "P17", label: "İç Konum 17", x: 305, y: 50, width: 80, height: 60),
+  // Sol sütun: P18 (üst) → END (alt)
   ZoneModel(
-      id: "P19", label: "insideloc 19", x: 455, y: 22, width: 80, height: 60),
+      id: "P18", label: "İç Konum 18", x: 186, y: 70, width: 80, height: 60),
   ZoneModel(
-      id: "P20", label: "insideloc 20", x: 395, y: 22, width: 80, height: 60),
+      id: "P19", label: "İç Konum 19", x: 186, y: 130, width: 80, height: 60),
   ZoneModel(
-      id: "P21", label: "insideloc 21", x: 365, y: 22, width: 80, height: 60),
+      id: "P20", label: "İç Konum 20", x: 186, y: 190, width: 80, height: 60),
   ZoneModel(
-      id: "P22", label: "insideloc 22", x: 305, y: 22, width: 80, height: 60),
+      id: "P21", label: "İç Konum 21", x: 186, y: 250, width: 80, height: 60),
   ZoneModel(
-      id: "P23", label: "insideloc 23", x: 186, y: 40, width: 80, height: 60),
+      id: "P22", label: "İç Konum 22", x: 186, y: 310, width: 80, height: 60),
   ZoneModel(
-      id: "P24", label: "insideloc 24", x: 186, y: 70, width: 80, height: 60),
+      id: "P23", label: "İç Konum 23", x: 186, y: 370, width: 80, height: 60),
   ZoneModel(
-      id: "P25", label: "insideloc 25", x: 186, y: 100, width: 80, height: 60),
+      id: "P24", label: "İç Konum 24", x: 186, y: 430, width: 80, height: 60),
   ZoneModel(
-      id: "P26", label: "insideloc 26", x: 186, y: 130, width: 80, height: 60),
+      id: "P25", label: "İç Konum 25", x: 186, y: 490, width: 80, height: 60),
   ZoneModel(
-      id: "P27", label: "insideloc 27", x: 186, y: 160, width: 80, height: 60),
+      id: "P26", label: "İç Konum 26", x: 186, y: 550, width: 80, height: 60),
   ZoneModel(
-      id: "P28", label: "insideloc 28", x: 186, y: 190, width: 80, height: 60),
+      id: "P27", label: "İç Konum 27", x: 186, y: 670, width: 80, height: 60),
   ZoneModel(
-      id: "P29", label: "insideloc 29", x: 186, y: 220, width: 80, height: 60),
+      id: "P28", label: "İç Konum 28", x: 186, y: 790, width: 80, height: 60),
   ZoneModel(
-      id: "P30", label: "insideloc 30", x: 186, y: 250, width: 80, height: 60),
-  ZoneModel(
-      id: "P31", label: "insideloc 31", x: 186, y: 280, width: 80, height: 60),
-  ZoneModel(
-      id: "P32", label: "insideloc 32", x: 186, y: 310, width: 80, height: 60),
-  ZoneModel(
-      id: "P33", label: "insideloc 33", x: 186, y: 340, width: 80, height: 60),
-  ZoneModel(
-      id: "P34", label: "insideloc 34", x: 186, y: 370, width: 80, height: 60),
-  ZoneModel(
-      id: "P35", label: "insideloc 35", x: 186, y: 400, width: 80, height: 60),
-  ZoneModel(
-      id: "P36", label: "insideloc 36", x: 186, y: 430, width: 80, height: 60),
-  ZoneModel(
-      id: "P37", label: "insideloc 37", x: 186, y: 460, width: 80, height: 60),
-  ZoneModel(
-      id: "P38", label: "insideloc 38", x: 186, y: 490, width: 80, height: 60),
-  ZoneModel(
-      id: "P39", label: "insideloc 39", x: 186, y: 520, width: 80, height: 60),
-  ZoneModel(
-      id: "P40", label: "insideloc 40", x: 186, y: 550, width: 80, height: 60),
+      id: "P29",
+      label: "İç Konum 29",
+      x: 186,
+      y: 870,
+      width: 80,
+      height: 60), // P1 simetriği
+  ZoneModel(id: "END", label: "Bitiş", x: 186, y: 970, width: 80, height: 60),
 ];

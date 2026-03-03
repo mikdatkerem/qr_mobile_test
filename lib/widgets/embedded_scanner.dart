@@ -15,40 +15,47 @@ class EmbeddedScanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Ekran genişliğini al, tarama penceresini buna göre hesapla
+    final screenWidth = MediaQuery.of(context).size.width;
+    const height = 110.0;
+
+    // scanWindow: cihaz ekran koordinatlarında taranacak alan.
+    // AppBar yüksekliği + kamera bandının başlangıcını hesaba kat.
+    final appBarHeight = kToolbarHeight + MediaQuery.of(context).padding.top;
+    final scanWindow = Rect.fromLTWH(0, appBarHeight, screenWidth, height);
+
     return SizedBox(
       width: double.infinity,
-      height: 110,
+      height: height,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Kamera önizlemesi
+          // Kamera — sadece scanWindow içindeki QR'ları okur
           MobileScanner(
             controller: controller,
             onDetect: onDetect,
+            scanWindow: scanWindow,
           ),
 
-          // Hafif karartma — göze batmasın
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black12],
+          // Yükleniyor
+          if (isLoading)
+            Container(
+              color: Colors.black38,
+              child: const Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
-          ),
 
-          // Tarama çerçevesi
-          Center(
-            child: CustomPaint(
-              size: const Size(180, 60),
-              painter: _ScannerFramePainter(),
-            ),
-          ),
-
-          // "QR kodunu okutun" etiketi
+          // Alt yazı
           Positioned(
-            bottom: 8,
+            bottom: 6,
             left: 0,
             right: 0,
             child: Text(
@@ -56,77 +63,14 @@ class EmbeddedScanner extends StatelessWidget {
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: FontWeight.w500,
                 shadows: [Shadow(color: Colors.black54, blurRadius: 4)],
               ),
             ),
           ),
-
-          // Yükleniyor göstergesi
-          if (isLoading)
-            Container(
-              color: Colors.black26,
-              child: const Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );
   }
-}
-
-class _ScannerFramePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.greenAccent
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    const cornerLen = 14.0;
-    final w = size.width;
-    final h = size.height;
-
-    // Sol üst
-    canvas.drawPath(
-        Path()
-          ..moveTo(0, cornerLen)
-          ..lineTo(0, 0)
-          ..lineTo(cornerLen, 0),
-        paint);
-    // Sağ üst
-    canvas.drawPath(
-        Path()
-          ..moveTo(w - cornerLen, 0)
-          ..lineTo(w, 0)
-          ..lineTo(w, cornerLen),
-        paint);
-    // Sol alt
-    canvas.drawPath(
-        Path()
-          ..moveTo(0, h - cornerLen)
-          ..lineTo(0, h)
-          ..lineTo(cornerLen, h),
-        paint);
-    // Sağ alt
-    canvas.drawPath(
-        Path()
-          ..moveTo(w - cornerLen, h)
-          ..lineTo(w, h)
-          ..lineTo(w, h - cornerLen),
-        paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

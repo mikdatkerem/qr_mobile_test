@@ -87,31 +87,26 @@ const List<ZoneModel> hardcodedZones = [
   ZoneModel(
       id: "P18", label: "İç Konum 18", x: 186, y: 70, width: 80, height: 60),
   ZoneModel(
-      id: "P19", label: "İç Konum 19", x: 186, y: 130, width: 80, height: 60),
+      id: "P19", label: "İç Konum 19", x: 186, y: 120, width: 80, height: 60),
   ZoneModel(
-      id: "P20", label: "İç Konum 20", x: 186, y: 190, width: 80, height: 60),
+      id: "P20", label: "İç Konum 20", x: 186, y: 220, width: 80, height: 60),
   ZoneModel(
-      id: "P21", label: "İç Konum 21", x: 186, y: 250, width: 80, height: 60),
+      id: "P21", label: "İç Konum 21", x: 186, y: 280, width: 80, height: 60),
   ZoneModel(
-      id: "P22", label: "İç Konum 22", x: 186, y: 310, width: 80, height: 60),
+      id: "P22", label: "İç Konum 22", x: 186, y: 340, width: 80, height: 60),
   ZoneModel(
-      id: "P23", label: "İç Konum 23", x: 186, y: 370, width: 80, height: 60),
+      id: "P23", label: "İç Konum 23", x: 186, y: 410, width: 80, height: 60),
   ZoneModel(
-      id: "P24", label: "İç Konum 24", x: 186, y: 430, width: 80, height: 60),
+      id: "P24", label: "İç Konum 24", x: 186, y: 470, width: 80, height: 60),
   ZoneModel(
-      id: "P25", label: "İç Konum 25", x: 186, y: 490, width: 80, height: 60),
+      id: "P25", label: "İç Konum 25", x: 186, y: 540, width: 80, height: 60),
   ZoneModel(
-      id: "P26", label: "İç Konum 26", x: 186, y: 550, width: 80, height: 60),
+      id: "P26", label: "İç Konum 26", x: 186, y: 600, width: 80, height: 60),
   ZoneModel(
-      id: "P27", label: "İç Konum 27", x: 186, y: 670, width: 80, height: 60),
+      id: "P27", label: "İç Konum 27", x: 186, y: 690, width: 80, height: 60),
   ZoneModel(
       id: "P28", label: "İç Konum 28", x: 186, y: 790, width: 80, height: 60),
   ZoneModel(
-      id: "P29",
-      label: "İç Konum 29",
-      x: 186,
-      y: 870,
-      width: 80,
-      height: 60), // P1 simetriği
+      id: "P29", label: "İç Konum 29", x: 186, y: 870, width: 80, height: 60),
   ZoneModel(id: "END", label: "Bitiş", x: 186, y: 970, width: 80, height: 60),
 ];

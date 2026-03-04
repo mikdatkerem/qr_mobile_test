@@ -14,7 +14,6 @@ import '../widgets/park_selector_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
-
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -35,7 +34,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = false;
   bool _zonesLoading = true;
 
-  // Navigasyon
   MapNode? _targetPark;
   List<MapNode>? _navigationRoute;
 
@@ -96,7 +94,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _activeZoneId = locationId;
         _isLoading = false;
       });
-      // Navigasyon aktifse rotayı güncelle
       if (_targetPark != null) _updateRoute(locationId);
     } on LocationNotFoundException catch (e) {
       if (!mounted) return;
@@ -117,9 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_targetPark == null) return;
     final route = _pathfinder.findPath(fromId, _targetPark!.id);
     setState(() => _navigationRoute = route);
-    if (route == null) {
-      _showErrorSnackBar('Bu konumdan hedefe rota bulunamadı');
-    }
+    if (route == null) _showErrorSnackBar('Bu konumdan hedefe rota bulunamadı');
   }
 
   void _showParkSelector() {
@@ -130,9 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (_) => ParkSelectorSheet(
         pathfinder: _pathfinder,
         onParkSelected: (park) {
@@ -156,65 +149,78 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showTestPicker() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => Column(
-        children: [
-          const SizedBox(height: 12),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
                 color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2)),
-          ),
-          const SizedBox(height: 12),
-          Text('Test: QR Simüle Et',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: _zones.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (_, i) {
-                final zone = _zones[i];
-                final visited = _visitedIds.contains(zone.id);
-                return ListTile(
-                  dense: true,
-                  leading: CircleAvatar(
-                    radius: 14,
-                    backgroundColor:
-                        visited ? Colors.green.shade100 : Colors.grey.shade100,
-                    child: Text(
-                      zone.id.replaceAll(RegExp(r'[^0-9]'), ''),
-                      style: TextStyle(
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text('Test: QR Simüle Et',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.5,
+              child: ListView.separated(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                itemCount: _zones.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final zone = _zones[i];
+                  final visited = _visitedIds.contains(zone.id);
+                  return ListTile(
+                    dense: true,
+                    leading: CircleAvatar(
+                      radius: 14,
+                      backgroundColor: visited
+                          ? Colors.green.shade100
+                          : Colors.grey.shade100,
+                      child: Text(
+                        zone.id.replaceAll(RegExp(r'[^0-9]'), ''),
+                        style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                           color: visited
                               ? Colors.green.shade700
-                              : Colors.grey.shade600),
+                              : Colors.grey.shade600,
+                        ),
+                      ),
                     ),
-                  ),
-                  title: Text(zone.label),
-                  subtitle: Text(zone.id),
-                  trailing: visited
-                      ? Icon(Icons.check_circle,
-                          color: Colors.green.shade500, size: 18)
-                      : null,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _handleScannedId(zone.id);
-                  },
-                );
-              },
+                    title: Text(zone.label),
+                    subtitle: Text(zone.id),
+                    trailing: visited
+                        ? Icon(Icons.check_circle,
+                            color: Colors.green.shade500, size: 18)
+                        : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _handleScannedId(zone.id);
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+            // Telefon navigasyon çubuğu için boşluk
+            SizedBox(height: MediaQuery.of(context).padding.bottom),
+          ],
+        ),
       ),
     );
   }
@@ -238,17 +244,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: const Color.fromARGB(255, 237, 218, 155),
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(kToolbarHeight),
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Image.asset('assets/mustang.jpeg',
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    Container(color: Colors.grey.shade800)),
+            Image.asset(
+              'assets/mustang.jpeg',
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) =>
+                  Container(color: Colors.grey.shade800),
+            ),
             Positioned(
               right: 4,
               top: 0,
@@ -268,23 +278,26 @@ class _HomeScreenState extends State<HomeScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                // ── Kamera widget'ı (daire) ──
                 EmbeddedScanner(
                   controller: _scannerController,
                   onDetect: _onQrDetected,
                   isLoading: _isLoading,
                 ),
 
-                // Navigasyon durumu bandı
+                // ── Navigasyon durumu bandı ──
                 if (_targetPark != null)
                   _NavBanner(
                     targetPark: _targetPark!,
                     routeLength: _navigationRoute?.length,
                     onClear: _clearNavigation,
+                    onTap: _showParkSelector,
                   ),
 
+                // ── SVG harita ──
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    padding: const EdgeInsets.fromLTRB(16, 1, 16, 8),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
                       child: Container(
@@ -314,62 +327,28 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
 
-                const _CreditBar(),
+                // ── Alt bant: Kredi + Park Seç ──
+                // SafeArea ile telefon navigasyon çubuğunun üstünde kalır
+                SafeArea(
+                  top: false,
+                  child: _BottomBar(
+                    onParkTap: _showParkSelector,
+                    targetPark: _targetPark,
+                  ),
+                ),
               ],
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showParkSelector,
-        icon: const Icon(Icons.local_parking),
-        label: const Text('Park Seç'),
-        backgroundColor: Colors.blue.shade600,
-      ),
     );
   }
 }
 
-// ─── Navigasyon durum bandı ──────────────────────────────────────────────────
+// ─── Alt bant (kredi + park seç butonu) ──────────────────────────────────────
 
-class _NavBanner extends StatelessWidget {
-  final MapNode targetPark;
-  final int? routeLength;
-  final VoidCallback onClear;
-  const _NavBanner(
-      {required this.targetPark, this.routeLength, required this.onClear});
+class _BottomBar extends StatelessWidget {
+  final VoidCallback onParkTap;
+  final MapNode? targetPark;
+  const _BottomBar({required this.onParkTap, this.targetPark});
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.blue.shade600,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          const Icon(Icons.navigation, color: Colors.white, size: 18),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              routeLength != null
-                  ? '${targetPark.label} · ${routeLength! - 1} adım'
-                  : 'Rota hesaplanıyor...',
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500),
-            ),
-          ),
-          GestureDetector(
-            onTap: onClear,
-            child: const Icon(Icons.close, color: Colors.white70, size: 18),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Alt kredi bandı ─────────────────────────────────────────────────────────
-
-class _CreditBar extends StatelessWidget {
-  const _CreditBar();
   static const _linkedInUrl = 'https://linkedin.com/in/mikdatkeremkalkan';
 
   Future<void> _openLinkedIn() async {
@@ -383,40 +362,125 @@ class _CreditBar extends StatelessWidget {
     final theme = Theme.of(context);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         boxShadow: [
           BoxShadow(
               color: Colors.black.withOpacity(0.06),
               blurRadius: 8,
-              offset: const Offset(0, -2))
+              offset: const Offset(0, -2)),
         ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          GestureDetector(
-            onTap: _openLinkedIn,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.link, size: 14, color: theme.colorScheme.primary),
-                const SizedBox(width: 4),
-                Text('Mikdat Kerem Kalkan',
+          // Kredi kısmı
+          Expanded(
+            child: GestureDetector(
+              onTap: _openLinkedIn,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.link, size: 13, color: theme.colorScheme.primary),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Mikdat Kerem Kalkan',
                     style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: theme.colorScheme.primary,
-                        decoration: TextDecoration.underline,
-                        decorationColor: theme.colorScheme.primary)),
-              ],
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                      decoration: TextDecoration.underline,
+                      decorationColor: theme.colorScheme.primary,
+                    ),
+                  ),
+                  Text('  ·  Mehmet Kalkan',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSurfaceVariant)),
+                ],
+              ),
             ),
           ),
-          Text('  ·  Mehmet Kalkan',
-              style: TextStyle(
-                  fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+          // Park Seç butonu
+          GestureDetector(
+            onTap: onParkTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade600,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.local_parking,
+                      color: Colors.white, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    targetPark != null ? targetPark!.label : 'Park Seç',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Navigasyon durum bandı ──────────────────────────────────────────────────
+
+class _NavBanner extends StatelessWidget {
+  final MapNode targetPark;
+  final int? routeLength;
+  final VoidCallback onClear;
+  final VoidCallback onTap;
+  const _NavBanner({
+    required this.targetPark,
+    this.routeLength,
+    required this.onClear,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        color: Colors.blue.shade600,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+        child: Row(
+          children: [
+            const Icon(Icons.navigation_rounded, color: Colors.white, size: 16),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                routeLength != null
+                    ? '${targetPark.label}  ·  ${routeLength! - 1} adım'
+                    : 'Rota hesaplanıyor...',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            GestureDetector(
+              onTap: onClear,
+              behavior: HitTestBehavior.opaque,
+              child: const Padding(
+                padding: EdgeInsets.only(left: 12),
+                child: Icon(Icons.close, color: Colors.white70, size: 16),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

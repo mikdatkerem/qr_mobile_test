@@ -108,5 +108,7 @@ const List<ZoneModel> hardcodedZones = [
       id: "P28", label: "İç Konum 28", x: 186, y: 790, width: 80, height: 60),
   ZoneModel(
       id: "P29", label: "İç Konum 29", x: 186, y: 870, width: 80, height: 60),
+  ZoneModel(
+      id: "P30", label: "İç Konum 30", x: 186, y: 900, width: 80, height: 60),
   ZoneModel(id: "END", label: "Bitiş", x: 186, y: 970, width: 80, height: 60),
 ];

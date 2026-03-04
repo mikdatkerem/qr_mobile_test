@@ -15,14 +15,7 @@ class EmbeddedScanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Ekran genişliğini al, tarama penceresini buna göre hesapla
-    final screenWidth = MediaQuery.of(context).size.width;
-    const height = 110.0;
-
-    // scanWindow: cihaz ekran koordinatlarında taranacak alan.
-    // AppBar yüksekliği + kamera bandının başlangıcını hesaba kat.
-    final appBarHeight = kToolbarHeight + MediaQuery.of(context).padding.top;
-    final scanWindow = Rect.fromLTWH(0, appBarHeight, screenWidth, height);
+    const height = 72.0;
 
     return SizedBox(
       width: double.infinity,
@@ -30,11 +23,9 @@ class EmbeddedScanner extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Kamera — sadece scanWindow içindeki QR'ları okur
           MobileScanner(
             controller: controller,
             onDetect: onDetect,
-            scanWindow: scanWindow,
           ),
 
           // Yükleniyor

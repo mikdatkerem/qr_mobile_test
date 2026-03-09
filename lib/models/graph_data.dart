@@ -4,12 +4,27 @@ class MapNode {
   final String id, label;
   final double x, y;
   final NodeType type;
-  const MapNode(
-      {required this.id,
-      required this.label,
-      required this.x,
-      required this.y,
-      required this.type});
+
+  const MapNode({
+    required this.id,
+    required this.label,
+    required this.x,
+    required this.y,
+    required this.type,
+  });
+
+  factory MapNode.fromJson(Map<String, dynamic> json) {
+    final nodeTypeInt = json['nodeType'] as int? ?? 1;
+    final nodeType = nodeTypeInt == 2 ? NodeType.park : NodeType.qr;
+    return MapNode(
+      id: (json['id'] as String).toUpperCase(),
+      label: json['id'] as String,
+      x: (json['x'] as num).toDouble(),
+      y: (json['y'] as num).toDouble(),
+      type: nodeType,
+    );
+  }
+
   bool get isPark => type == NodeType.park;
   bool get isQr => type == NodeType.qr;
 }

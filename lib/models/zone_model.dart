@@ -21,8 +21,8 @@ class ZoneModel {
       label: json['label'] as String,
       x: (json['x'] as num).toDouble(),
       y: (json['y'] as num).toDouble(),
-      width: (json['width'] as num).toDouble(),
-      height: (json['height'] as num).toDouble(),
+      width: (json['width'] as num?)?.toDouble() ?? 80.0,
+      height: (json['height'] as num?)?.toDouble() ?? 60.0,
     );
   }
 

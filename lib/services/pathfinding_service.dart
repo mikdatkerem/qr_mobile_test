@@ -1,138 +1,44 @@
-import 'dart:math';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/graph_data.dart';
-
-class _Edge {
-  final String to;
-  final double weight;
-  const _Edge(this.to, this.weight);
-}
+import '../models/exceptions.dart';
 
 class PathfindingService {
-  // QR-only graph (park node'ları arası geçiş yok)
-  late final Map<String, List<_Edge>> _qrAdj;
-  // Park → en yakın QR node'u eşlemesi
-  late final Map<String, String> _parkToNearestQr;
+  //static const String _baseUrl = 'http://10.0.2.2:5011/api';
+  static const String _baseUrl =
+      'https://barbara-raised-coated-replies.trycloudflare.com/api';
+  // static const String _baseUrl = 'http://localhost:5116/api';
+  // static const String _baseUrl = 'https://your-production-url.com/api';
 
-  final Map<String, MapNode> _nodeMap;
+  final http.Client _client;
 
-  PathfindingService() : _nodeMap = {for (final n in allNodes) n.id: n} {
-    _qrAdj = {};
-    _parkToNearestQr = {};
+  PathfindingService({http.Client? client}) : _client = client ?? http.Client();
 
-    // Sadece QR node'larını graph'a ekle
-    for (final node in allNodes.where((n) => n.isQr)) {
-      _qrAdj[node.id] = [];
-    }
+  /// GET /api/navigation/route?from=P5&to=A12
+  /// → RouteDto: { nodes, distanceMeters, distanceLabel }
+  Future<RouteResult?> findPathFromApi(String fromId, String toId) async {
+    final uri = Uri.parse('$_baseUrl/navigation/route')
+        .replace(queryParameters: {'from': fromId, 'to': toId});
+    try {
+      final response = await _client.get(uri, headers: {
+        'Accept': 'application/json'
+      }).timeout(const Duration(seconds: 10));
 
-    // Sadece QR↔QR edge'lerini ekle (park geçişleri yok)
-    for (final edge in allEdges) {
-      final a = _nodeMap[edge.from]!;
-      final b = _nodeMap[edge.to]!;
-      if (a.isQr && b.isQr) {
-        final w = _dist(a, b);
-        _qrAdj[edge.from]!.add(_Edge(edge.to, w));
-        _qrAdj[edge.to]!.add(_Edge(edge.from, w));
+      if (response.statusCode == 404) return null;
+      if (response.statusCode != 200) {
+        throw ApiException('Rota alınamadı', statusCode: response.statusCode);
       }
-    }
 
-    // Her park node'u için en yakın QR'ı bul (edge listesinden)
-    final parkEdges = <String, List<String>>{};
-    for (final edge in allEdges) {
-      final a = _nodeMap[edge.from]!;
-      final b = _nodeMap[edge.to]!;
-      if (a.isPark && b.isQr) {
-        parkEdges.putIfAbsent(a.id, () => []).add(b.id);
-      }
-      if (b.isPark && a.isQr) {
-        parkEdges.putIfAbsent(b.id, () => []).add(a.id);
-      }
-    }
-
-    for (final parkId in parkEdges.keys) {
-      final park = _nodeMap[parkId]!;
-      final connectedQrs = parkEdges[parkId]!;
-      // Bağlı QR'lar arasından en yakınını seç
-      connectedQrs.sort((a, b) =>
-          _dist(park, _nodeMap[a]!).compareTo(_dist(park, _nodeMap[b]!)));
-      _parkToNearestQr[parkId] = connectedQrs.first;
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return RouteResult.fromJson(json);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('Bağlantı hatası: $e');
     }
   }
 
-  double _dist(MapNode a, MapNode b) =>
-      sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
-
-  /// fromId (QR) → toId (Park) arası yol:
-  /// 1. fromQR → nearestQR(park) dijkstra ile yol üzerinden
-  /// 2. Son adımda nearestQR → park node'u eklenir
-  List<MapNode>? findPath(String fromId, String toId) {
-    final from = _nodeMap[fromId];
-    final to = _nodeMap[toId];
-    if (from == null || to == null) return null;
-    if (fromId == toId) return [from];
-
-    // Hedef park'ın giriş QR'ını bul
-    final entryQrId = to.isPark ? _parkToNearestQr[toId] : toId;
-    if (entryQrId == null) return null;
-
-    // QR graph'ında Dijkstra
-    final qrPath = _dijkstra(fromId, entryQrId);
-    if (qrPath == null) return null;
-
-    // Park hedefse son adıma park node'unu ekle
-    if (to.isPark) {
-      return [...qrPath, to];
-    }
-    return qrPath;
-  }
-
-  List<MapNode>? _dijkstra(String fromId, String toId) {
-    if (fromId == toId) return [_nodeMap[fromId]!];
-
-    final dist = <String, double>{};
-    final prev = <String, String>{};
-    final unvisited = <String>{};
-
-    for (final id in _qrAdj.keys) {
-      dist[id] = double.infinity;
-      unvisited.add(id);
-    }
-    dist[fromId] = 0.0;
-
-    while (unvisited.isNotEmpty) {
-      final u = unvisited.reduce((a, b) =>
-          (dist[a] ?? double.infinity) < (dist[b] ?? double.infinity) ? a : b);
-
-      if ((dist[u] ?? double.infinity) == double.infinity) break;
-      if (u == toId) break;
-
-      unvisited.remove(u);
-
-      for (final edge in (_qrAdj[u] ?? [])) {
-        if (!unvisited.contains(edge.to)) continue;
-        final alt = dist[u]! + edge.weight;
-        if (alt < (dist[edge.to] ?? double.infinity)) {
-          dist[edge.to] = alt;
-          prev[edge.to] = u;
-        }
-      }
-    }
-
-    if (!prev.containsKey(toId) && fromId != toId) return null;
-
-    final path = <String>[];
-    String? cur = toId;
-    while (cur != null) {
-      path.add(cur);
-      cur = prev[cur];
-    }
-    return path.reversed.map((id) => _nodeMap[id]!).toList();
-  }
-
-  List<MapNode> getNodesByType(NodeType type) =>
-      allNodes.where((n) => n.type == type).toList();
-
+  // Park grup listesi için (ParkSelectorSheet kullanır)
   Map<String, List<MapNode>> getParkGroups() {
-    // Tüm parkları tek liste olarak döndür (A1-A50 sıralı)
     final parks = allNodes.where((n) => n.isPark).toList();
     parks.sort((a, b) {
       final na = int.tryParse(a.id.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
@@ -140,5 +46,32 @@ class PathfindingService {
       return na.compareTo(nb);
     });
     return {'A': parks};
+  }
+
+  void dispose() => _client.close();
+}
+
+/// API'den dönen rota sonucu
+class RouteResult {
+  final List<MapNode> nodes;
+  final double distanceMeters;
+  final String distanceLabel;
+
+  const RouteResult({
+    required this.nodes,
+    required this.distanceMeters,
+    required this.distanceLabel,
+  });
+
+  factory RouteResult.fromJson(Map<String, dynamic> json) {
+    final nodeList = (json['nodes'] as List<dynamic>)
+        .map((e) => MapNode.fromJson(e as Map<String, dynamic>))
+        .toList();
+
+    return RouteResult(
+      nodes: nodeList,
+      distanceMeters: (json['distanceMeters'] as num).toDouble(),
+      distanceLabel: json['distanceLabel'] as String,
+    );
   }
 }

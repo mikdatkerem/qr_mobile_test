@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   MapNode? _targetPark;
   List<MapNode>? _navigationRoute;
+  String? _distanceLabel;
 
   String? _lastScannedId;
   DateTime? _lastScannedTime;
@@ -110,11 +111,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _updateRoute(String fromId) {
+  Future<void> _updateRoute(String fromId) async {
     if (_targetPark == null) return;
-    final route = _pathfinder.findPath(fromId, _targetPark!.id);
-    setState(() => _navigationRoute = route);
-    if (route == null) _showErrorSnackBar('Bu konumdan hedefe rota bulunamadı');
+    try {
+      final result = await _pathfinder.findPathFromApi(fromId, _targetPark!.id);
+      if (!mounted) return;
+      setState(() {
+        _navigationRoute = result?.nodes;
+        _distanceLabel = result?.distanceLabel;
+      });
+      if (result == null)
+        _showErrorSnackBar('Bu konumdan hedefe rota bulunamadı');
+    } catch (e) {
+      if (!mounted) return;
+      _showErrorSnackBar('Rota hesaplanamadı: $e');
+    }
   }
 
   void _showParkSelector() {
@@ -143,6 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _targetPark = null;
       _navigationRoute = null;
+      _distanceLabel = null;
     });
   }
 
@@ -289,7 +301,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (_targetPark != null)
                   _NavBanner(
                     targetPark: _targetPark!,
-                    routeLength: _navigationRoute?.length,
+                    distanceLabel: _distanceLabel,
                     onClear: _clearNavigation,
                     onTap: _showParkSelector,
                   ),
@@ -297,7 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 // ── SVG harita ──
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 1, 16, 8),
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(16),
                       child: Container(
@@ -438,12 +450,12 @@ class _BottomBar extends StatelessWidget {
 
 class _NavBanner extends StatelessWidget {
   final MapNode targetPark;
-  final int? routeLength;
+  final String? distanceLabel;
   final VoidCallback onClear;
   final VoidCallback onTap;
   const _NavBanner({
     required this.targetPark,
-    this.routeLength,
+    this.distanceLabel,
     required this.onClear,
     required this.onTap,
   });
@@ -461,8 +473,8 @@ class _NavBanner extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                routeLength != null
-                    ? '${targetPark.label}  ·  ${routeLength! - 1} adım'
+                distanceLabel != null
+                    ? '${targetPark.label}  ·  $distanceLabel'
                     : 'Rota hesaplanıyor...',
                 style: const TextStyle(
                   color: Colors.white,

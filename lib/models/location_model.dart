@@ -14,7 +14,7 @@ class LocationModel {
   factory LocationModel.fromJson(Map<String, dynamic> json) {
     return LocationModel(
       id: json['id'] as String,
-      name: json['name'] as String,
+      name: (json['label'] ?? json['name']) as String,
       x: (json['x'] as num).toDouble(),
       y: (json['y'] as num).toDouble(),
     );

@@ -34,14 +34,14 @@ class NavigationRoutePainter extends CustomPainter {
 
     // Ana çizgi
     final linePaint = Paint()
-      ..color = Colors.green.shade600
+      ..color = Colors.blue.shade600
       ..strokeWidth = 3
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
     final glowPaint = Paint()
-      ..color = Colors.greenAccent.withOpacity(0.4 * animation.value)
+      ..color = Colors.lightBlueAccent.withOpacity(0.4 * animation.value)
       ..strokeWidth = 6
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
@@ -59,9 +59,9 @@ class NavigationRoutePainter extends CustomPainter {
 
     // Hedef nokta (son node) — park ikonu
     final dest = points.last;
-    final destPaint = Paint()..color = Colors.green.shade700;
+    final destPaint = Paint()..color = Colors.blue.shade700;
     final destGlow = Paint()
-      ..color = Colors.green.withOpacity(0.3 * animation.value)
+      ..color = Colors.blue.withOpacity(0.3 * animation.value)
       ..style = PaintingStyle.fill;
 
     canvas.drawCircle(dest, 12 + 4 * animation.value, destGlow);

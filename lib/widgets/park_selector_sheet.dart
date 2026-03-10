@@ -5,11 +5,13 @@ import '../services/pathfinding_service.dart';
 class ParkSelectorSheet extends StatelessWidget {
   final PathfindingService pathfinder;
   final void Function(MapNode park) onParkSelected;
+  final Map<String, bool> occupancyMap; // spotId → isOccupied
 
   const ParkSelectorSheet({
     super.key,
     required this.pathfinder,
     required this.onParkSelected,
+    this.occupancyMap = const {},
   });
 
   @override
@@ -29,7 +31,6 @@ class ParkSelectorSheet extends StatelessWidget {
         ),
         child: Column(
           children: [
-            // Handle
             const SizedBox(height: 12),
             Container(
               width: 40,
@@ -46,19 +47,16 @@ class ParkSelectorSheet extends StatelessWidget {
                 children: [
                   Icon(Icons.local_parking, color: Colors.blue.shade600),
                   const SizedBox(width: 8),
-                  Text(
-                    'Park Seç',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
+                  Text('Park Seç',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold)),
                   const Spacer(),
-                  Text(
-                    'Bir park yerine yol çizilecek',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Colors.grey,
-                        ),
-                  ),
+                  // Renk legend
+                  _LegendDot(color: Colors.green.shade500, label: 'Boş'),
+                  const SizedBox(width: 8),
+                  _LegendDot(color: Colors.red.shade500, label: 'Dolu'),
                 ],
               ),
             ),
@@ -71,8 +69,7 @@ class ParkSelectorSheet extends StatelessWidget {
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 itemCount: groupKeys.length,
                 itemBuilder: (_, gi) {
-                  final groupKey = groupKeys[gi];
-                  final parks = groups[groupKey]!;
+                  final parks = groups[groupKeys[gi]]!;
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -102,35 +99,56 @@ class ParkSelectorSheet extends StatelessWidget {
                         itemBuilder: (_, i) {
                           final park = parks[i];
                           final num = park.id.replaceAll(RegExp(r'[^0-9]'), '');
+                          final isOccupied = occupancyMap[park.id];
+                          final Color bgColor;
+                          final Color borderColor;
+                          final Color iconColor;
+                          final Color textColor;
+
+                          if (isOccupied == null) {
+                            bgColor = Colors.grey.shade100;
+                            borderColor = Colors.grey.shade300;
+                            iconColor = Colors.grey.shade400;
+                            textColor = Colors.grey.shade600;
+                          } else if (isOccupied) {
+                            bgColor = Colors.red.shade50;
+                            borderColor = Colors.red.shade200;
+                            iconColor = Colors.red.shade400;
+                            textColor = Colors.red.shade700;
+                          } else {
+                            bgColor = Colors.green.shade50;
+                            borderColor = Colors.green.shade300;
+                            iconColor = Colors.green.shade500;
+                            textColor = Colors.green.shade700;
+                          }
+
                           return GestureDetector(
-                            onTap: () {
-                              Navigator.pop(ctx);
-                              onParkSelected(park);
-                            },
-                            child: Container(
+                            onTap: isOccupied == true
+                                ? null
+                                : () {
+                                    Navigator.pop(ctx);
+                                    onParkSelected(park);
+                                  },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
                               decoration: BoxDecoration(
-                                color: Colors.blue.shade50,
+                                color: bgColor,
                                 borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: Colors.blue.shade200,
-                                  width: 1,
-                                ),
+                                border:
+                                    Border.all(color: borderColor, width: 1),
                               ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(
-                                    Icons.local_parking,
-                                    size: 18,
-                                    color: Colors.blue.shade600,
-                                  ),
+                                  Icon(Icons.local_parking,
+                                      size: 18, color: iconColor),
                                   const SizedBox(height: 2),
                                   Text(
                                     num,
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.blue.shade700,
+                                      color: textColor,
                                     ),
                                   ),
                                 ],
@@ -145,11 +163,30 @@ class ParkSelectorSheet extends StatelessWidget {
                 },
               ),
             ),
-            // Telefon navigasyon çubuğu için boşluk
             SafeArea(top: false, child: const SizedBox.shrink()),
           ],
         ),
       ),
     );
   }
+}
+
+class _LegendDot extends StatelessWidget {
+  final Color color;
+  final String label;
+  const _LegendDot({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 3),
+          Text(label,
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+        ],
+      );
 }

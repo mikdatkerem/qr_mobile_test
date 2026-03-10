@@ -1,14 +1,14 @@
 import 'dart:convert';
+import '../main.dart';
 import 'package:http/http.dart' as http;
 import '../models/zone_model.dart';
 import '../models/exceptions.dart';
 
 class ZoneService {
-  //static const String _baseUrl = 'http://10.0.2.2:5011/api';
-  static const String _baseUrl =
-      'https://barbara-raised-coated-replies.trycloudflare.com/api';
-  // static const String _baseUrl = 'http://localhost:5116/api';
-  // static const String _baseUrl = 'https://your-production-url.com/api';
+  // Android emülatör: 10.0.2.2 → bilgisayarının localhost'u
+  // Fiziksel cihaz: bilgisayarının local IP'si (örn. 192.168.1.x)
+  // iOS simülatör / web: localhost
+  String get _baseUrl => AppConfig.apiBaseUrl;
 
   final http.Client _client;
 

@@ -1,14 +1,11 @@
 import 'dart:convert';
+import '../main.dart';
 import 'package:http/http.dart' as http;
 import '../models/graph_data.dart';
 import '../models/exceptions.dart';
 
 class PathfindingService {
-  //static const String _baseUrl = 'http://10.0.2.2:5011/api';
-  static const String _baseUrl =
-      'https://barbara-raised-coated-replies.trycloudflare.com/api';
-  // static const String _baseUrl = 'http://localhost:5116/api';
-  // static const String _baseUrl = 'https://your-production-url.com/api';
+  String get _baseUrl => AppConfig.apiBaseUrl;
 
   final http.Client _client;
 

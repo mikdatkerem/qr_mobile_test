@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import '../main.dart';
 import '../models/zone_model.dart';
 import '../models/graph_data.dart';
-import '../services/parking_service.dart';
 import 'pulse_marker.dart';
 import 'navigation_route_painter.dart';
 
@@ -11,6 +11,7 @@ class FloorPlanWidget extends StatefulWidget {
   final Set<String> visitedIds;
   final String? activeZoneId;
   final List<MapNode>? navigationRoute;
+  final Map<String, bool> occupancyMap;
 
   static const double svgWidth = 800.0;
   static const double svgHeight = 1000.0;
@@ -21,6 +22,7 @@ class FloorPlanWidget extends StatefulWidget {
     required this.visitedIds,
     this.activeZoneId,
     this.navigationRoute,
+    this.occupancyMap = const {},
   });
 
   @override
@@ -32,8 +34,6 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
   late final AnimationController _glowController;
   late final Animation<double> _glowAnim;
 
-  late final ParkingService _parkingService;
-  Map<String, bool> _occupancyMap = {};
   bool _signalRConnected = false;
 
   @override
@@ -47,37 +47,17 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
     _glowAnim =
         CurvedAnimation(parent: _glowController, curve: Curves.easeInOut);
 
-    _parkingService = ParkingService(
-      onOccupancyChanged: _onOccupancyChanged,
-    );
-
     _init();
   }
 
   Future<void> _init() async {
-    // 1) REST ile ilk durumu yükle
-    try {
-      final map = await _parkingService.getOccupancyMap();
-      if (mounted) setState(() => _occupancyMap = map);
-    } catch (_) {}
-
-    // 2) SignalR bağlantısını başlat
-    try {
-      await _parkingService.startListening();
-      if (mounted) setState(() => _signalRConnected = true);
-    } catch (_) {}
-  }
-
-  /// SignalR'dan gelen anlık güncelleme
-  void _onOccupancyChanged(String spotId, bool isOccupied) {
-    if (!mounted) return;
-    setState(() => _occupancyMap[spotId] = isOccupied);
+    // occupancyMap dışarıdan geliyor (HomeScreen yönetiyor)
+    setState(() => _signalRConnected = true);
   }
 
   @override
   void dispose() {
     _glowController.dispose();
-    _parkingService.dispose();
     super.dispose();
   }
 
@@ -96,7 +76,7 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
 
   Color _parkColor(String nodeId) {
     if (_routeParkIds.contains(nodeId)) return Colors.blue.shade600;
-    final occupied = _occupancyMap[nodeId];
+    final occupied = widget.occupancyMap[nodeId];
     if (occupied == null) return Colors.grey.shade400;
     return occupied ? Colors.red.shade500 : Colors.green.shade500;
   }
@@ -121,10 +101,10 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
       return Stack(
         clipBehavior: Clip.hardEdge,
         children: [
-          // ── SVG Kroki ────────────────────────────────────────────────────
+          // ── SVG Kroki (sunucudan) ─────────────────────────────────────
           Positioned.fill(
-            child: SvgPicture.asset(
-              'assets/kroki.svg',
+            child: SvgPicture.network(
+              AppConfig.mapSvgUrl,
               fit: BoxFit.fill,
               placeholderBuilder: (_) =>
                   const Center(child: CircularProgressIndicator()),

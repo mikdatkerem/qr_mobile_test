@@ -1,14 +1,11 @@
 import 'dart:convert';
+import '../main.dart';
 import 'package:http/http.dart' as http;
 import '../models/location_model.dart';
 import '../models/exceptions.dart';
 
 class LocationService {
-  //static const String _baseUrl = 'http://10.0.2.2:5011/api'; // Android emülatör
-  static const String _baseUrl =
-      'https://barbara-raised-coated-replies.trycloudflare.com/api';
-  // static const String _baseUrl = 'http://localhost:5116/api'; // iOS / web
-  // static const String _baseUrl = 'https://your-production-url.com/api'; // Prod
+  String get _baseUrl => AppConfig.apiBaseUrl;
 
   final http.Client _client;
 

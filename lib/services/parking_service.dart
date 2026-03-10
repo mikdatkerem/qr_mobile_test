@@ -1,28 +1,22 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
+import '../main.dart';
 import 'package:http/http.dart' as http;
 import 'package:signalr_netcore/signalr_client.dart';
 
-/// Park yeri anlık doluluk servisi.
-/// - İlk yükleme: REST GET /api/parking-spots
-/// - Anlık güncelleme: SignalR /hubs/parking → "ParkingUpdated" eventi
 class ParkingService {
-  static const String _baseUrl = 'http://10.0.2.2:5011/api';
-  static const String _hubUrl = 'http://10.0.2.2:5011/hubs/parking';
+  String get _baseUrl => AppConfig.apiBaseUrl;
+  String get _hubUrl => AppConfig.hubBaseUrl;
 
   final http.Client _client;
   HubConnection? _hubConnection;
-
-  /// Dışarıya açık stream: spotId → isOccupied
   final void Function(String spotId, bool isOccupied)? onOccupancyChanged;
 
-  ParkingService({
-    http.Client? client,
-    this.onOccupancyChanged,
-  }) : _client = client ?? http.Client();
+  ParkingService({http.Client? client, this.onOccupancyChanged})
+      : _client = client ?? http.Client();
 
-  // ── REST: ilk yükleme ───────────────────────────────────────────────────
+  // ── REST: ilk yükleme ─────────────────────────────────────────────────────
 
-  /// GET /api/parking-spots → Map<spotId, isOccupied>
   Future<Map<String, bool>> getOccupancyMap() async {
     final uri = Uri.parse('$_baseUrl/parking-spots');
     final response = await _client.get(uri, headers: {
@@ -30,40 +24,68 @@ class ParkingService {
     }).timeout(const Duration(seconds: 10));
 
     if (response.statusCode != 200) {
-      throw Exception('Park durumu alınamadı: ${response.statusCode}');
+      throw Exception('HTTP ${response.statusCode}: ${response.body}');
     }
 
     final list = jsonDecode(response.body) as List<dynamic>;
-    return {
-      for (final e in list) (e['id'] as String): (e['isOccupied'] as bool),
-    };
+    final result = <String, bool>{};
+    for (final item in list) {
+      final e = item as Map<String, dynamic>;
+      final id = (e['id'] ?? e['Id']) as String;
+      final isOccupied = (e['isOccupied'] ?? e['IsOccupied']) as bool;
+      result[id] = isOccupied;
+    }
+    developer.log('Park durumu yüklendi: ${result.length} alan',
+        name: 'ParkingService');
+    return result;
   }
 
-  // ── SignalR: canlı güncelleme ────────────────────────────────────────────
+  // ── SignalR: canlı güncelleme ─────────────────────────────────────────────
 
   Future<void> startListening() async {
-    _hubConnection = HubConnectionBuilder()
-        .withUrl(_hubUrl)
-        .withAutomaticReconnect()
-        .build();
-
-    // "ParkingUpdated" → { spotId, isOccupied }
-    _hubConnection!.on('ParkingUpdated', (args) {
-      if (args == null || args.isEmpty) return;
-      final data = args[0] as Map<String, dynamic>;
-      final spotId = data['spotId'] as String;
-      final isOccupied = data['isOccupied'] as bool;
-      onOccupancyChanged?.call(spotId, isOccupied);
-    });
-
-    _hubConnection!.onclose(({error}) {
-      // Otomatik reconnect ayarlı, log yeterli
-    });
-
     try {
+      final hubUrl = _hubUrl;
+      developer.log('SignalR bağlanıyor: $hubUrl', name: 'ParkingService');
+
+      _hubConnection = HubConnectionBuilder()
+          .withUrl(hubUrl)
+          .withAutomaticReconnect()
+          .build();
+
+      _hubConnection!.on('ParkingUpdated', (args) {
+        developer.log('ParkingUpdated alındı: $args', name: 'ParkingService');
+        if (args == null || args.isEmpty) return;
+        try {
+          final data = args[0] as Map<String, dynamic>;
+          final spotId = (data['spotId'] ?? data['SpotId']) as String;
+          final isOccupied = (data['isOccupied'] ?? data['IsOccupied']) as bool;
+          onOccupancyChanged?.call(spotId, isOccupied);
+        } catch (e) {
+          developer.log('ParkingUpdated parse hatası: $e',
+              name: 'ParkingService');
+        }
+      });
+
+      _hubConnection!.onclose(({error}) {
+        developer.log('SignalR bağlantısı kapandı: $error',
+            name: 'ParkingService');
+      });
+
+      _hubConnection!.onreconnecting(({error}) {
+        developer.log('SignalR yeniden bağlanıyor: $error',
+            name: 'ParkingService');
+      });
+
+      _hubConnection!.onreconnected(({connectionId}) {
+        developer.log('SignalR yeniden bağlandı: $connectionId',
+            name: 'ParkingService');
+      });
+
       await _hubConnection!.start();
-    } catch (_) {
-      // SignalR bağlanamazsa REST verisiyle devam edilir
+      developer.log('SignalR bağlandı ✓', name: 'ParkingService');
+    } catch (e) {
+      developer.log('SignalR bağlantı hatası: $e', name: 'ParkingService');
+      rethrow;
     }
   }
 

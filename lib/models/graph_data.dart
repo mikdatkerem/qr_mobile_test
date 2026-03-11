@@ -127,7 +127,7 @@ const List<MapNode> allNodes = [
   MapNode(id: "A34", label: "Park 34", x: 130.0, y: 640.0, type: NodeType.park),
   MapNode(id: "A35", label: "Park 35", x: 130.0, y: 700.0, type: NodeType.park),
   MapNode(id: "A36", label: "Park 36", x: 130.0, y: 760.0, type: NodeType.park),
-  MapNode(id: "A37", label: "Park 37", x: 130.0, y: 840.0, type: NodeType.park),
+  MapNode(id: "A37", label: "Park 37", x: 130.0, y: 820.0, type: NodeType.park),
   MapNode(id: "A38", label: "Park 38", x: 130.0, y: 900.0, type: NodeType.park),
   MapNode(id: "A39", label: "Park 39", x: 340.0, y: 160.0, type: NodeType.park),
   MapNode(id: "A40", label: "Park 40", x: 340.0, y: 230.0, type: NodeType.park),

@@ -18,7 +18,7 @@ class ParkingService {
   // ── REST: ilk yükleme ─────────────────────────────────────────────────────
 
   Future<Map<String, bool>> getOccupancyMap() async {
-    final uri = Uri.parse('$_baseUrl/parking-spots');
+    final uri = Uri.parse('$_baseUrl/ParkingSpots');
     final response = await _client.get(uri, headers: {
       'Accept': 'application/json'
     }).timeout(const Duration(seconds: 10));

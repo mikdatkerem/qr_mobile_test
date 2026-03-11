@@ -49,11 +49,25 @@ class _HomeScreenState extends State<HomeScreen> {
   // En yakın boş park (henüz park seçilmemişse önerilir)
   MapNode? get _suggestedPark {
     if (_targetPark != null) return null;
-    // Boş olan park node'larından ilkini öner
     final emptyParks = allNodes
         .where((n) => n.isPark && _occupancyMap[n.id] == false)
         .toList();
     if (emptyParks.isEmpty) return null;
+
+    // Aktif QR node'u bul, ona en yakın boş parkı öner
+    if (_activeZoneId != null) {
+      final activeNode =
+          allNodes.where((n) => n.id == _activeZoneId).firstOrNull;
+      if (activeNode != null) {
+        emptyParks.sort((a, b) {
+          final da = (a.x - activeNode.x) * (a.x - activeNode.x) +
+              (a.y - activeNode.y) * (a.y - activeNode.y);
+          final db = (b.x - activeNode.x) * (b.x - activeNode.x) +
+              (b.y - activeNode.y) * (b.y - activeNode.y);
+          return da.compareTo(db);
+        });
+      }
+    }
     return emptyParks.first;
   }
 
@@ -412,10 +426,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 SafeArea(
                   top: false,
-                  child: _BottomBar(
-                    onParkTap: _showParkSelector,
-                    targetPark: _targetPark,
-                  ),
+                  child: const _BottomBar(),
                 ),
               ],
             ),
@@ -670,9 +681,7 @@ class _AppDrawer extends StatelessWidget {
 // ─── Alt bant ────────────────────────────────────────────────────────────────
 
 class _BottomBar extends StatelessWidget {
-  final VoidCallback onParkTap;
-  final MapNode? targetPark;
-  const _BottomBar({required this.onParkTap, this.targetPark});
+  const _BottomBar();
 
   static const _linkedInUrl = 'https://linkedin.com/in/mikdatkeremkalkan';
   Future<void> _openLinkedIn() async {
@@ -696,55 +705,25 @@ class _BottomBar extends StatelessWidget {
               offset: const Offset(0, -2))
         ],
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: _openLinkedIn,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.link, size: 13, color: theme.colorScheme.primary),
-                  const SizedBox(width: 4),
-                  Text('Mikdat Kerem Kalkan',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.primary,
-                          decoration: TextDecoration.underline,
-                          decorationColor: theme.colorScheme.primary)),
-                  Text('  ·  Mehmet Kalkan',
-                      style: TextStyle(
-                          fontSize: 11,
-                          color: theme.colorScheme.onSurfaceVariant)),
-                ],
-              ),
-            ),
-          ),
-          GestureDetector(
-            onTap: onParkTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade600,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.local_parking,
-                      color: Colors.white, size: 16),
-                  const SizedBox(width: 6),
-                  Text(targetPark != null ? targetPark!.label : 'Park Seç',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-          ),
-        ],
+      child: GestureDetector(
+        onTap: _openLinkedIn,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.link, size: 13, color: theme.colorScheme.primary),
+            const SizedBox(width: 4),
+            Text('Mikdat Kerem Kalkan',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary,
+                    decoration: TextDecoration.underline,
+                    decorationColor: theme.colorScheme.primary)),
+            Text('  ·  Mehmet Kalkan',
+                style: TextStyle(
+                    fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
+          ],
+        ),
       ),
     );
   }

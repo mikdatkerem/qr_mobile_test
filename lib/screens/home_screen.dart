@@ -1,7 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../models/zone_model.dart';
 import '../models/graph_data.dart';
 import '../models/exceptions.dart';
@@ -12,6 +12,11 @@ import '../services/parking_service.dart';
 import '../widgets/floor_plan_widget.dart';
 import '../widgets/embedded_scanner.dart';
 import '../widgets/park_selector_sheet.dart';
+import '../widgets/app_notification.dart';
+import '../widgets/app_drawer.dart';
+import '../widgets/park_confirm_dialog.dart';
+import '../widgets/nav_banner.dart';
+import '../widgets/bottom_bar.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -35,41 +40,37 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _activeZoneId;
   bool _isLoading = false;
   bool _zonesLoading = true;
-
   MapNode? _targetPark;
   List<MapNode>? _navigationRoute;
   String? _distanceLabel;
-
-  // Park doluluk durumu — tüm uygulama genelinde tek kaynak
   Map<String, bool> _occupancyMap = {};
+  MapNode? _parkedAt;
+  AppNotificationBar? _notification;
 
   String? _lastScannedId;
   DateTime? _lastScannedTime;
 
-  // En yakın boş park (henüz park seçilmemişse önerilir)
   MapNode? get _suggestedPark {
     if (_targetPark != null) return null;
     final emptyParks = allNodes
         .where((n) => n.isPark && _occupancyMap[n.id] == false)
         .toList();
     if (emptyParks.isEmpty) return null;
-
-    // Aktif QR node'u bul, ona en yakın boş parkı öner
     if (_activeZoneId != null) {
-      final activeNode =
-          allNodes.where((n) => n.id == _activeZoneId).firstOrNull;
-      if (activeNode != null) {
+      final active = allNodes.where((n) => n.id == _activeZoneId).firstOrNull;
+      if (active != null) {
         emptyParks.sort((a, b) {
-          final da = (a.x - activeNode.x) * (a.x - activeNode.x) +
-              (a.y - activeNode.y) * (a.y - activeNode.y);
-          final db = (b.x - activeNode.x) * (b.x - activeNode.x) +
-              (b.y - activeNode.y) * (b.y - activeNode.y);
-          return da.compareTo(db);
+          double d(MapNode n) =>
+              (n.x - active.x) * (n.x - active.x) +
+              (n.y - active.y) * (n.y - active.y);
+          return d(a).compareTo(d(b));
         });
       }
     }
     return emptyParks.first;
   }
+
+  // ── Lifecycle ────────────────────────────────────────────────────────────
 
   @override
   void initState() {
@@ -77,31 +78,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _parkingService = ParkingService(onOccupancyChanged: _onOccupancyChanged);
     _loadZones();
     _loadOccupancy();
-  }
-
-  Future<void> _loadOccupancy() async {
-    bool loaded = false;
-    for (int attempt = 0; attempt < 3; attempt++) {
-      try {
-        final map = await _parkingService.getOccupancyMap();
-        if (mounted) setState(() => _occupancyMap = map);
-        loaded = true;
-        break;
-      } catch (e) {
-        if (attempt < 2) {
-          await Future.delayed(const Duration(seconds: 2));
-        } else if (mounted) {
-          _showErrorSnackBar('Park durumu yüklenemedi: $e');
-        }
-      }
-    }
-    if (loaded) await _parkingService.startListening();
-  }
-
-  // SignalR'dan gelen anlık güncelleme
-  void _onOccupancyChanged(String spotId, bool isOccupied) {
-    if (!mounted) return;
-    setState(() => _occupancyMap[spotId] = isOccupied);
   }
 
   @override
@@ -112,6 +88,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _parkingService.dispose();
     super.dispose();
   }
+
+  // ── Veri yükleme ─────────────────────────────────────────────────────────
 
   Future<void> _loadZones() async {
     try {
@@ -128,16 +106,46 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _loadOccupancy() async {
+    for (int i = 0; i < 3; i++) {
+      try {
+        final map = await _parkingService.getOccupancyMap();
+        if (mounted) setState(() => _occupancyMap = map);
+        break;
+      } catch (e) {
+        if (i < 2)
+          await Future.delayed(const Duration(seconds: 2));
+        else if (mounted) _showErrorSnackBar('Park durumu yüklenemedi: $e');
+      }
+    }
+    await _parkingService.startListening();
+  }
+
+  // ── SignalR callback ──────────────────────────────────────────────────────
+
+  void _onOccupancyChanged(String spotId, bool isOccupied) {
+    if (!mounted) return;
+    final wasEmpty = _occupancyMap[spotId] == false;
+    setState(() => _occupancyMap[spotId] = isOccupied);
+
+    // Hedef park boş→dolu geçişi yaptıysa park onayı sor
+    if (isOccupied && wasEmpty && _targetPark?.id == spotId) {
+      _showParkConfirmDialog(spotId);
+    }
+  }
+
+  // ── QR tarama ────────────────────────────────────────────────────────────
+
   Future<void> _onQrDetected(BarcodeCapture capture) async {
-    final rawValue = capture.barcodes.firstOrNull?.rawValue?.trim();
-    if (rawValue == null || rawValue.isEmpty) return;
+    final raw = capture.barcodes.firstOrNull?.rawValue?.trim();
+    if (raw == null || raw.isEmpty) return;
     final now = DateTime.now();
-    if (rawValue == _lastScannedId &&
+    if (raw == _lastScannedId &&
         _lastScannedTime != null &&
         now.difference(_lastScannedTime!) < const Duration(seconds: 3)) return;
-    _lastScannedId = rawValue;
+    _lastScannedId = raw;
     _lastScannedTime = now;
-    await _handleScannedId(rawValue);
+    await _handleScannedId(raw);
   }
 
   Future<void> _handleScannedId(String locationId) async {
@@ -152,7 +160,25 @@ class _HomeScreenState extends State<HomeScreen> {
         _activeZoneId = locationId;
         _isLoading = false;
       });
-      if (_targetPark != null) _updateRoute(locationId);
+      if (_targetPark != null) {
+        _updateRoute(locationId);
+      } else {
+        final suggested = _suggestedPark;
+        if (suggested != null) {
+          _showNotification(
+            message: 'En yakın boş park alanı: ${suggested.id}',
+            style: NotificationStyle.info,
+            actionLabel: 'Git',
+            onAction: () {
+              setState(() {
+                _targetPark = suggested;
+                _navigationRoute = null;
+              });
+              _updateRoute(locationId);
+            },
+          );
+        }
+      }
     } on LocationNotFoundException catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -168,6 +194,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ── Navigasyon ────────────────────────────────────────────────────────────
+
   Future<void> _updateRoute(String fromId) async {
     if (_targetPark == null) return;
     try {
@@ -177,12 +205,79 @@ class _HomeScreenState extends State<HomeScreen> {
         _navigationRoute = result?.nodes;
         _distanceLabel = result?.distanceLabel;
       });
-      if (result == null)
+      if (result == null) {
         _showErrorSnackBar('Bu konumdan hedefe rota bulunamadı');
+      } else {
+        _showNotification(
+          message: '${_targetPark!.id} için rota oluşturuldu',
+          style: NotificationStyle.success,
+          duration: const Duration(seconds: 4),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       _showErrorSnackBar('Rota hesaplanamadı: $e');
     }
+  }
+
+  void _clearNavigation() {
+    setState(() {
+      _targetPark = null;
+      _navigationRoute = null;
+      _distanceLabel = null;
+    });
+  }
+
+  void _navigateToExit() {
+    Navigator.pop(context);
+    final exit = allNodes.where((n) => n.id == 'END').firstOrNull;
+    if (exit == null) return;
+    setState(() {
+      _targetPark = exit;
+      _navigationRoute = null;
+      _distanceLabel = null;
+    });
+    if (_activeZoneId != null) _updateRoute(_activeZoneId!);
+  }
+
+  void _navigateToCar() {
+    if (_parkedAt == null) return;
+    Navigator.pop(context);
+    setState(() {
+      _targetPark = _parkedAt;
+      _navigationRoute = null;
+      _distanceLabel = null;
+    });
+    if (_activeZoneId != null) _updateRoute(_activeZoneId!);
+  }
+
+  // ── Dialogs ───────────────────────────────────────────────────────────────
+
+  void _showParkConfirmDialog(String spotId) {
+    final park = allNodes.where((n) => n.id == spotId).firstOrNull;
+    if (park == null) return;
+    showDialog(
+      context: context,
+      barrierColor: Colors.black26,
+      builder: (_) => ParkConfirmDialog(
+        park: park,
+        onConfirm: () {
+          Navigator.pop(context);
+          setState(() {
+            _parkedAt = park;
+            _targetPark = null;
+            _navigationRoute = null;
+            _distanceLabel = null;
+          });
+          _showNotification(
+            message: 'Araç ${park.id} alanına kaydedildi',
+            style: NotificationStyle.success,
+            duration: const Duration(seconds: 5),
+          );
+        },
+        onDeny: () => Navigator.pop(context),
+      ),
+    );
   }
 
   void _showParkSelector() {
@@ -206,27 +301,6 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
     );
-  }
-
-  void _clearNavigation() {
-    setState(() {
-      _targetPark = null;
-      _navigationRoute = null;
-      _distanceLabel = null;
-    });
-  }
-
-  /// Çıkışa yönlendir (END node'unu hedef al)
-  void _navigateToExit() {
-    Navigator.pop(context); // drawer'ı kapat
-    final exitNode = allNodes.where((n) => n.id == 'END').firstOrNull;
-    if (exitNode == null) return;
-    setState(() {
-      _targetPark = exitNode;
-      _navigationRoute = null;
-      _distanceLabel = null;
-    });
-    if (_activeZoneId != null) _updateRoute(_activeZoneId!);
   }
 
   void _showTestPicker() {
@@ -302,6 +376,32 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ── Yardımcılar ───────────────────────────────────────────────────────────
+
+  void _showNotification({
+    required String message,
+    NotificationStyle style = NotificationStyle.info,
+    String? actionLabel,
+    VoidCallback? onAction,
+    String? secondaryActionLabel,
+    VoidCallback? onSecondaryAction,
+    Duration duration = const Duration(seconds: 6),
+  }) {
+    setState(() {
+      _notification = AppNotificationBar(
+        key: UniqueKey(),
+        message: message,
+        style: style,
+        actionLabel: actionLabel,
+        onAction: onAction,
+        secondaryActionLabel: secondaryActionLabel,
+        onSecondaryAction: onSecondaryAction,
+        duration: duration,
+        onDismiss: () => setState(() => _notification = null),
+      );
+    });
+  }
+
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -319,15 +419,18 @@ class _HomeScreenState extends State<HomeScreen> {
       ));
   }
 
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color.fromARGB(255, 237, 218, 155),
-      drawer: _AppDrawer(
+      drawer: AppDrawer(
         occupancyMap: _occupancyMap,
         suggestedPark: _suggestedPark,
         activeZoneId: _activeZoneId,
         targetPark: _targetPark,
+        parkedAt: _parkedAt,
         onParkSelected: (park) {
           setState(() {
             _targetPark = park;
@@ -337,6 +440,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Navigator.pop(context);
         },
         onNavigateToExit: _navigateToExit,
+        onNavigateToCar: _navigateToCar,
         onClearNav: _clearNavigation,
       ),
       appBar: PreferredSize(
@@ -348,31 +452,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) =>
                     Container(color: Colors.grey.shade800)),
-            // Drawer butonu (sol)
             Positioned(
               left: 4,
               top: 0,
               bottom: 0,
               child: Center(
-                child: Builder(
-                    builder: (ctx) => IconButton(
-                          icon: const Icon(Icons.menu, color: Colors.white),
-                          onPressed: () => Scaffold.of(ctx).openDrawer(),
-                        )),
-              ),
+                  child: Builder(
+                      builder: (ctx) => IconButton(
+                            icon: const Icon(Icons.menu, color: Colors.white),
+                            onPressed: () => Scaffold.of(ctx).openDrawer(),
+                          ))),
             ),
-            // Test butonu (sağ)
             Positioned(
               right: 4,
               top: 0,
               bottom: 0,
               child: Center(
-                child: IconButton(
-                  icon: const Icon(Icons.qr_code, color: Colors.white),
-                  tooltip: 'Test QR',
-                  onPressed: _zones.isEmpty ? null : _showTestPicker,
-                ),
-              ),
+                  child: IconButton(
+                icon: const Icon(Icons.qr_code, color: Colors.white),
+                tooltip: 'Test QR',
+                onPressed: _zones.isEmpty ? null : _showTestPicker,
+              )),
             ),
           ],
         ),
@@ -387,7 +487,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   isLoading: _isLoading,
                 ),
                 if (_targetPark != null)
-                  _NavBanner(
+                  NavBanner(
                     targetPark: _targetPark!,
                     distanceLabel: _distanceLabel,
                     onClear: _clearNavigation,
@@ -412,369 +512,33 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          child: FloorPlanWidget(
-                            zones: _zones,
-                            visitedIds: _visitedIds,
-                            activeZoneId: _activeZoneId,
-                            navigationRoute: _navigationRoute,
-                            occupancyMap: _occupancyMap,
-                          ),
+                          child: Stack(children: [
+                            FloorPlanWidget(
+                              zones: _zones,
+                              visitedIds: _visitedIds,
+                              activeZoneId: _activeZoneId,
+                              navigationRoute: _navigationRoute,
+                              occupancyMap: _occupancyMap,
+                            ),
+                            if (_notification != null)
+                              Positioned(
+                                left: 0,
+                                right: 0,
+                                bottom: 8,
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 300),
+                                  child: _notification,
+                                ),
+                              ),
+                          ]),
                         ),
                       ),
                     ),
                   ),
                 ),
-                SafeArea(
-                  top: false,
-                  child: const _BottomBar(),
-                ),
+                const SafeArea(top: false, child: BottomBar()),
               ],
             ),
-    );
-  }
-}
-
-// ─── App Drawer ───────────────────────────────────────────────────────────────
-
-class _AppDrawer extends StatelessWidget {
-  final Map<String, bool> occupancyMap;
-  final MapNode? suggestedPark;
-  final String? activeZoneId;
-  final MapNode? targetPark;
-  final void Function(MapNode) onParkSelected;
-  final VoidCallback onNavigateToExit;
-  final VoidCallback onClearNav;
-
-  const _AppDrawer({
-    required this.occupancyMap,
-    required this.suggestedPark,
-    required this.activeZoneId,
-    required this.targetPark,
-    required this.onParkSelected,
-    required this.onNavigateToExit,
-    required this.onClearNav,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final total = allNodes.where((n) => n.isPark).length;
-    final empty = occupancyMap.values.where((v) => !v).length;
-    final full = occupancyMap.values.where((v) => v).length;
-
-    return Drawer(
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Başlık ────────────────────────────────────────────────────
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-              color: Colors.blue.shade700,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.local_parking,
-                      color: Colors.white, size: 32),
-                  const SizedBox(height: 8),
-                  const Text('Park Durumu',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text('$empty boş · $full dolu · $total toplam',
-                      style:
-                          const TextStyle(color: Colors.white70, fontSize: 12)),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // ── En yakın boş park önerisi ─────────────────────────────────
-            if (suggestedPark != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Material(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => onParkSelected(suggestedPark!),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade500,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.stars_rounded,
-                                color: Colors.white, size: 22),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Önerilen Park',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.green,
-                                        fontWeight: FontWeight.w600)),
-                                Text(suggestedPark!.id,
-                                    style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                          ),
-                          Icon(Icons.arrow_forward_ios,
-                              size: 14, color: Colors.green.shade400),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-            if (suggestedPark != null) const SizedBox(height: 8),
-
-            // ── Çıkışa git butonu ─────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Material(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: onNavigateToExit,
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade500,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(Icons.exit_to_app,
-                              color: Colors.white, size: 22),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Çıkışa Git',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.orange,
-                                      fontWeight: FontWeight.w600)),
-                              Text('Çıkış noktasına yol çiz',
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.arrow_forward_ios,
-                            size: 14, color: Colors.orange.shade400),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-            const Divider(indent: 12, endIndent: 12),
-            const SizedBox(height: 8),
-
-            // ── Park listesi ──────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text('Tüm Park Yerleri',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade600,
-                      letterSpacing: 0.5)),
-            ),
-            const SizedBox(height: 8),
-
-            Expanded(
-              child: GridView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 5,
-                  mainAxisSpacing: 6,
-                  crossAxisSpacing: 6,
-                  childAspectRatio: 1.3,
-                ),
-                itemCount: allNodes.where((n) => n.isPark).length,
-                itemBuilder: (_, i) {
-                  final park = allNodes.where((n) => n.isPark).toList()[i];
-                  final isOccupied = occupancyMap[park.id];
-                  final isTarget = targetPark?.id == park.id;
-                  final num = park.id.replaceAll(RegExp(r'[^0-9]'), '');
-
-                  Color bg, border, text;
-                  if (isTarget) {
-                    bg = Colors.blue.shade600;
-                    border = Colors.blue.shade700;
-                    text = Colors.white;
-                  } else if (isOccupied == null) {
-                    bg = Colors.grey.shade100;
-                    border = Colors.grey.shade300;
-                    text = Colors.grey.shade500;
-                  } else if (isOccupied) {
-                    bg = Colors.red.shade50;
-                    border = Colors.red.shade200;
-                    text = Colors.red.shade700;
-                  } else {
-                    bg = Colors.green.shade50;
-                    border = Colors.green.shade300;
-                    text = Colors.green.shade700;
-                  }
-
-                  return GestureDetector(
-                    onTap: isOccupied == true
-                        ? null
-                        : () {
-                            onParkSelected(park);
-                          },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      decoration: BoxDecoration(
-                        color: bg,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: border, width: 1),
-                      ),
-                      child: Center(
-                        child: Text(num,
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: text)),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Alt bant ────────────────────────────────────────────────────────────────
-
-class _BottomBar extends StatelessWidget {
-  const _BottomBar();
-
-  static const _linkedInUrl = 'https://linkedin.com/in/mikdatkeremkalkan';
-  Future<void> _openLinkedIn() async {
-    final uri = Uri.parse(_linkedInUrl);
-    if (await canLaunchUrl(uri))
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 8,
-              offset: const Offset(0, -2))
-        ],
-      ),
-      child: GestureDetector(
-        onTap: _openLinkedIn,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.link, size: 13, color: theme.colorScheme.primary),
-            const SizedBox(width: 4),
-            Text('Mikdat Kerem Kalkan',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.primary,
-                    decoration: TextDecoration.underline,
-                    decorationColor: theme.colorScheme.primary)),
-            Text('  ·  Mehmet Kalkan',
-                style: TextStyle(
-                    fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Navigasyon durum bandı ───────────────────────────────────────────────────
-
-class _NavBanner extends StatelessWidget {
-  final MapNode targetPark;
-  final String? distanceLabel;
-  final VoidCallback onClear;
-  final VoidCallback onTap;
-  const _NavBanner(
-      {required this.targetPark,
-      this.distanceLabel,
-      required this.onClear,
-      required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        color: Colors.blue.shade600,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-        child: Row(
-          children: [
-            const Icon(Icons.navigation_rounded, color: Colors.white, size: 16),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                distanceLabel != null
-                    ? '${targetPark.label}  ·  $distanceLabel'
-                    : 'Rota hesaplanıyor...',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500),
-              ),
-            ),
-            GestureDetector(
-              onTap: onClear,
-              behavior: HitTestBehavior.opaque,
-              child: const Padding(
-                padding: EdgeInsets.only(left: 12),
-                child: Icon(Icons.close, color: Colors.white70, size: 16),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

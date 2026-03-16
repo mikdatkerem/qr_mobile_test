@@ -10,7 +10,7 @@ class AppConfig {
   // Fiziksel cihaz    : http://192.168.x.x:5011
   // Cloudflare tunnel : https://xxxx.trycloudflare.com
   static const String baseHost =
-      'https://documented-composition-operator-matt.trycloudflare.com';
+      'https://these-ability-alternatives-contributions.trycloudflare.com';
 
   static String get apiBaseUrl => '$baseHost/api';
   static String get hubBaseUrl => '$baseHost/hubs/parking';

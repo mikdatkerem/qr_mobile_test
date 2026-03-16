@@ -12,6 +12,7 @@ class FloorPlanWidget extends StatefulWidget {
   final String? activeZoneId;
   final List<MapNode>? navigationRoute;
   final Map<String, bool> occupancyMap;
+  final void Function(MapNode)? onParkTap;
 
   static const double svgWidth = 800.0;
   static const double svgHeight = 1000.0;
@@ -23,6 +24,7 @@ class FloorPlanWidget extends StatefulWidget {
     this.activeZoneId,
     this.navigationRoute,
     this.occupancyMap = const {},
+    this.onParkTap,
   });
 
   @override
@@ -123,33 +125,38 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
             return Positioned(
               left: left,
               top: top,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 350),
-                width: boxW,
-                height: boxH,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
-                    color: isTarget ? Colors.white : color.withOpacity(0.4),
-                    width: isTarget ? 1.5 : 0.8,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withOpacity(0.35),
-                      blurRadius: isTarget ? 8 : 3,
-                      spreadRadius: isTarget ? 1 : 0,
+              child: GestureDetector(
+                onTap: widget.onParkTap != null
+                    ? () => widget.onParkTap!(node)
+                    : null,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 350),
+                  width: boxW,
+                  height: boxH,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: isTarget ? Colors.white : color.withOpacity(0.4),
+                      width: isTarget ? 1.5 : 0.8,
                     ),
-                  ],
-                ),
-                child: Center(
-                  child: Text(
-                    node.id.replaceAll(RegExp(r'[^0-9]'), ''),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 7,
-                      fontWeight: FontWeight.w700,
-                      height: 1,
+                    boxShadow: [
+                      BoxShadow(
+                        color: color.withOpacity(0.35),
+                        blurRadius: isTarget ? 8 : 3,
+                        spreadRadius: isTarget ? 1 : 0,
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      node.id.replaceAll(RegExp(r'[^0-9]'), ''),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 7,
+                        fontWeight: FontWeight.w700,
+                        height: 1,
+                      ),
                     ),
                   ),
                 ),

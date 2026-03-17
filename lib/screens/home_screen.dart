@@ -12,6 +12,7 @@ import '../services/parking_service.dart';
 import '../widgets/floor_plan_widget.dart';
 import '../widgets/embedded_scanner.dart';
 import '../widgets/park_selector_sheet.dart';
+import '../widgets/park_suggestion_dialog.dart';
 import '../widgets/app_notification.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/park_confirm_dialog.dart';
@@ -118,7 +119,11 @@ class _HomeScreenState extends State<HomeScreen> {
         else if (mounted) _showErrorSnackBar('Park durumu yüklenemedi: $e');
       }
     }
-    await _parkingService.startListening();
+    try {
+      await _parkingService.startListening();
+    } catch (e) {
+      if (mounted) _showErrorSnackBar('SignalR bağlantısı kurulamadı: $e');
+    }
   }
 
   // ── SignalR callback ──────────────────────────────────────────────────────
@@ -162,13 +167,16 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       if (_targetPark != null) {
         _updateRoute(locationId);
+      } else if (locationId == 'START') {
+        // START QR → park seçim dialog'u
+        _showParkSuggestionDialog();
       } else {
         final suggested = _suggestedPark;
         if (suggested != null) {
           _showNotification(
-            message: 'En yakın boş park alanı: ${suggested.id}',
+            message: 'En yakın boş alan: ${suggested.id}',
             style: NotificationStyle.info,
-            actionLabel: 'Git',
+            actionLabel: 'Rotala',
             onAction: () {
               setState(() {
                 _targetPark = suggested;
@@ -278,6 +286,65 @@ class _HomeScreenState extends State<HomeScreen> {
         onDeny: () => Navigator.pop(context),
       ),
     );
+  }
+
+  void _showParkSuggestionDialog() {
+    if (_activeZoneId == null) return;
+    final nearestToUser =
+        _pathfinder.nearestEmptyParkToUser(_activeZoneId!, _occupancyMap);
+    final nearestToHospital =
+        _pathfinder.nearestEmptyParkToHospital(_occupancyMap);
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black26,
+      builder: (_) => ParkSuggestionDialog(
+        nearestToUser: nearestToUser,
+        nearestToHospital: nearestToHospital,
+        onSelected: (park) {
+          setState(() {
+            _targetPark = park;
+            _navigationRoute = null;
+          });
+          _updateRoute(_activeZoneId!);
+        },
+      ),
+    );
+  }
+
+  void _navigateNearestToUser() {
+    if (_activeZoneId == null) {
+      _showErrorSnackBar('Önce bir QR kodu okutun');
+      return;
+    }
+    final park =
+        _pathfinder.nearestEmptyParkToUser(_activeZoneId!, _occupancyMap);
+    if (park == null) {
+      _showErrorSnackBar('Boş park alanı bulunamadı');
+      return;
+    }
+    setState(() {
+      _targetPark = park;
+      _navigationRoute = null;
+    });
+    _updateRoute(_activeZoneId!);
+  }
+
+  void _navigateNearestToHospital() {
+    if (_activeZoneId == null) {
+      _showErrorSnackBar('Önce bir QR kodu okutun');
+      return;
+    }
+    final park = _pathfinder.nearestEmptyParkToHospital(_occupancyMap);
+    if (park == null) {
+      _showErrorSnackBar('Boş park alanı bulunamadı');
+      return;
+    }
+    setState(() {
+      _targetPark = park;
+      _navigationRoute = null;
+    });
+    _updateRoute(_activeZoneId!);
   }
 
   void _showParkSelector() {
@@ -442,6 +509,8 @@ class _HomeScreenState extends State<HomeScreen> {
         onNavigateToExit: _navigateToExit,
         onNavigateToCar: _navigateToCar,
         onClearNav: _clearNavigation,
+        onNearestToUser: _navigateNearestToUser,
+        onNearestToHospital: _navigateNearestToHospital,
       ),
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(kToolbarHeight),

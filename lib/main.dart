@@ -1,22 +1,19 @@
 import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
 
-/// ── Uygulama geneli konfigürasyon ──────────────────────────────────────────
 class AppConfig {
   AppConfig._();
 
-  // Android emülatör  : http://10.0.2.2:5011
-  // iOS simülatör/web : http://localhost:5011
-  // Fiziksel cihaz    : http://192.168.x.x:5011
-  // Cloudflare tunnel : https://xxxx.trycloudflare.com
+  // flutter run --dart-define=BASE_HOST=https://your-domain.com --dart-define=APP_SECRET=xxx
   static const String baseHost =
-      'https://these-ability-alternatives-contributions.trycloudflare.com';
+      String.fromEnvironment('BASE_HOST', defaultValue: 'http://10.0.2.2:5011');
+  static const String appSecret =
+      String.fromEnvironment('APP_SECRET', defaultValue: '');
 
   static String get apiBaseUrl => '$baseHost/api';
   static String get hubBaseUrl => '$baseHost/hubs/parking';
   static String get mapSvgUrl => '$baseHost/maps/kroki.svg';
 }
-// ────────────────────────────────────────────────────────────────────────────
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,10 +36,7 @@ class QrLocationApp extends StatelessWidget {
           background: const Color(0xFFFFF176),
           surface: const Color(0xFFFFF9C4),
         ),
-        appBarTheme: const AppBarTheme(
-          elevation: 0,
-          centerTitle: true,
-        ),
+        appBarTheme: const AppBarTheme(elevation: 0, centerTitle: true),
       ),
       home: const HomeScreen(),
     );

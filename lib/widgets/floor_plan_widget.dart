@@ -12,7 +12,6 @@ class FloorPlanWidget extends StatefulWidget {
   final String? activeZoneId;
   final List<MapNode>? navigationRoute;
   final Map<String, bool> occupancyMap;
-  final void Function(MapNode)? onParkTap;
 
   static const double svgWidth = 800.0;
   static const double svgHeight = 1000.0;
@@ -24,7 +23,6 @@ class FloorPlanWidget extends StatefulWidget {
     this.activeZoneId,
     this.navigationRoute,
     this.occupancyMap = const {},
-    this.onParkTap,
   });
 
   @override
@@ -36,25 +34,15 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
   late final AnimationController _glowController;
   late final Animation<double> _glowAnim;
 
-  bool _signalRConnected = false;
-
   @override
   void initState() {
     super.initState();
-
     _glowController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..repeat(reverse: true);
     _glowAnim =
         CurvedAnimation(parent: _glowController, curve: Curves.easeInOut);
-
-    _init();
-  }
-
-  Future<void> _init() async {
-    // occupancyMap dışarıdan geliyor (HomeScreen yönetiyor)
-    setState(() => _signalRConnected = true);
   }
 
   @override
@@ -68,16 +56,7 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
     return allNodes.where((n) => n.id == widget.activeZoneId).firstOrNull;
   }
 
-  Set<String> get _routeParkIds {
-    if (widget.navigationRoute == null) return {};
-    return widget.navigationRoute!
-        .where((n) => n.isPark)
-        .map((n) => n.id)
-        .toSet();
-  }
-
   Color _parkColor(String nodeId) {
-    if (_routeParkIds.contains(nodeId)) return Colors.blue.shade600;
     final occupied = widget.occupancyMap[nodeId];
     if (occupied == null) return Colors.grey.shade400;
     return occupied ? Colors.red.shade500 : Colors.green.shade500;
@@ -91,80 +70,30 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
       final scaleX = w / FloorPlanWidget.svgWidth;
       final scaleY = h / FloorPlanWidget.svgHeight;
 
-      double? pointerLeft;
-      double? pointerTop;
-      if (_activeNode != null) {
-        pointerLeft = _activeNode!.x * scaleX - 20;
-        pointerTop = _activeNode!.y * scaleY - 20;
-      }
-
+      final activeNode = _activeNode;
       final parkNodes = allNodes.where((n) => n.isPark).toList();
+
+      double? pointerLeft, pointerTop;
+      if (activeNode != null) {
+        pointerLeft = activeNode.x * scaleX - 20;
+        pointerTop = activeNode.y * scaleY - 20;
+      }
 
       return Stack(
         clipBehavior: Clip.hardEdge,
         children: [
-          // ── SVG Kroki (sunucudan) ─────────────────────────────────────
+          // ── SVG zemin ──────────────────────────────────────────────────
           Positioned.fill(
             child: SvgPicture.network(
               AppConfig.mapSvgUrl,
               fit: BoxFit.fill,
               placeholderBuilder: (_) =>
                   const Center(child: CircularProgressIndicator()),
+              headers: {'x-app-secret': AppConfig.appSecret},
             ),
           ),
 
-          // ── Park kutuları ─────────────────────────────────────────────────
-          ...parkNodes.map((node) {
-            const boxW = 28.0;
-            const boxH = 18.0;
-            final left = node.x * scaleX - boxW / 2;
-            final top = node.y * scaleY - boxH / 2;
-            final color = _parkColor(node.id);
-            final isTarget = _routeParkIds.contains(node.id);
-
-            return Positioned(
-              left: left,
-              top: top,
-              child: GestureDetector(
-                onTap: widget.onParkTap != null
-                    ? () => widget.onParkTap!(node)
-                    : null,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 350),
-                  width: boxW,
-                  height: boxH,
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                      color: isTarget ? Colors.white : color.withOpacity(0.4),
-                      width: isTarget ? 1.5 : 0.8,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: color.withOpacity(0.35),
-                        blurRadius: isTarget ? 8 : 3,
-                        spreadRadius: isTarget ? 1 : 0,
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      node.id.replaceAll(RegExp(r'[^0-9]'), ''),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 7,
-                        fontWeight: FontWeight.w700,
-                        height: 1,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
-
-          // ── Navigasyon rotası ─────────────────────────────────────────────
+          // ── Navigasyon rotası ──────────────────────────────────────────
           if (widget.navigationRoute != null &&
               widget.navigationRoute!.length >= 2)
             Positioned.fill(
@@ -178,38 +107,79 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
               ),
             ),
 
-          // ── Kullanıcı konumu ──────────────────────────────────────────────
-          if (_activeNode != null && pointerLeft != null && pointerTop != null)
+          // ── Hastane Girişi etiketi ────────────────────────────────────
+          Positioned(
+            left: 418.0 * scaleX - 44,
+            top: 40.0 * scaleY - 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0C714),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text(
+                'Hastane Girişi',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+          ),
+
+          // ── Park kutuları — sadece doluluk rengi ───────────────────────
+          ...parkNodes.map((node) {
+            const boxW = 28.0;
+            const boxH = 18.0;
+            final left = node.x * scaleX - boxW / 2;
+            final top = node.y * scaleY - boxH / 2;
+            final color = _parkColor(node.id);
+
+            return Positioned(
+              left: left,
+              top: top,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 350),
+                width: boxW,
+                height: boxH,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: color.withOpacity(0.4),
+                    width: 0.8,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withOpacity(0.3),
+                      blurRadius: 3,
+                    )
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    node.id.replaceAll(RegExp(r'[^0-9]'), ''),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 7,
+                      fontWeight: FontWeight.w700,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+
+          // ── Kullanıcı konumu ───────────────────────────────────────────
+          if (activeNode != null && pointerLeft != null && pointerTop != null)
             Positioned(
               left: pointerLeft.clamp(0.0, w - 40),
               top: pointerTop.clamp(0.0, h - 40),
               child: const PulseMarker(),
             ),
-
-          // ── SignalR bağlantı göstergesi ───────────────────────────────────
-          Positioned(
-            right: 8,
-            top: 8,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 400),
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _signalRConnected
-                    ? Colors.green.shade400
-                    : Colors.orange.shade400,
-                boxShadow: [
-                  BoxShadow(
-                    color: (_signalRConnected ? Colors.green : Colors.orange)
-                        .withOpacity(0.5),
-                    blurRadius: 6,
-                    spreadRadius: 1,
-                  ),
-                ],
-              ),
-            ),
-          ),
         ],
       );
     });

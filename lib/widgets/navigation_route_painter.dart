@@ -56,38 +56,6 @@ class NavigationRoutePainter extends CustomPainter {
     canvas.drawPath(path, shadowPaint);
     canvas.drawPath(path, linePaint);
     canvas.drawPath(path, glowPaint);
-
-    // Hedef nokta (son node) — park ikonu
-    final dest = points.last;
-    final destPaint = Paint()..color = Colors.blue.shade700;
-    final destGlow = Paint()
-      ..color = Colors.blue.withOpacity(0.3 * animation.value)
-      ..style = PaintingStyle.fill;
-
-    canvas.drawCircle(dest, 12 + 4 * animation.value, destGlow);
-    canvas.drawCircle(dest, 9, destPaint);
-    canvas.drawCircle(
-      dest,
-      9,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
-
-    // P harfi
-    final tp = TextPainter(
-      text: TextSpan(
-        text: 'P',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, dest.translate(-tp.width / 2, -tp.height / 2));
   }
 
   @override

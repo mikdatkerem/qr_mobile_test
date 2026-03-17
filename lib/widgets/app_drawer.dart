@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/graph_data.dart';
+import '../services/pathfinding_service.dart' show kHospitalNodeId;
 
 class AppDrawer extends StatelessWidget {
   final Map<String, bool> occupancyMap;
@@ -11,6 +12,8 @@ class AppDrawer extends StatelessWidget {
   final VoidCallback onNavigateToExit;
   final VoidCallback onNavigateToCar;
   final VoidCallback onClearNav;
+  final VoidCallback onNearestToUser;
+  final VoidCallback onNearestToHospital;
 
   const AppDrawer({
     super.key,
@@ -23,6 +26,8 @@ class AppDrawer extends StatelessWidget {
     required this.onNavigateToExit,
     required this.onNavigateToCar,
     required this.onClearNav,
+    required this.onNearestToUser,
+    required this.onNearestToHospital,
   });
 
   @override
@@ -62,18 +67,33 @@ class AppDrawer extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            if (suggestedPark != null) ...[
-              DrawerTile(
-                icon: Icons.stars_rounded,
-                iconBg: Colors.green.shade500,
-                bgColor: Colors.green.shade50,
-                label: 'Önerilen Park',
-                sublabel: suggestedPark!.id,
-                arrowColor: Colors.green.shade400,
-                onTap: () => onParkSelected(suggestedPark!),
-              ),
-              const SizedBox(height: 8),
-            ],
+            // ── Park önerisi butonları ─────────────────────────────────
+            DrawerTile(
+              icon: Icons.person_pin_circle_rounded,
+              iconBg: Colors.blue.shade600,
+              bgColor: Colors.blue.shade50,
+              label: 'Bana en yakın',
+              sublabel: 'Konumunuza göre öneri',
+              arrowColor: Colors.blue.shade400,
+              onTap: () {
+                Navigator.pop(context);
+                onNearestToUser();
+              },
+            ),
+            const SizedBox(height: 8),
+            DrawerTile(
+              icon: Icons.local_hospital_rounded,
+              iconBg: Colors.green.shade600,
+              bgColor: Colors.green.shade50,
+              label: 'Hastane girişine en yakın',
+              sublabel: 'Giriş noktası: $kHospitalNodeId',
+              arrowColor: Colors.green.shade400,
+              onTap: () {
+                Navigator.pop(context);
+                onNearestToHospital();
+              },
+            ),
+            const SizedBox(height: 8),
 
             if (parkedAt != null) ...[
               DrawerTile(

@@ -32,6 +32,16 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+.flutter-plugins
+.packages
+
+ 
+# Secrets 
+.env
+
+# VS Code
+.vscode/settings.json
+
 
 # Symbolication related
 app.*.symbols

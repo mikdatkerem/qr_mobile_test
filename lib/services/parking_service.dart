@@ -15,12 +15,13 @@ class ParkingService {
   ParkingService({http.Client? client, this.onOccupancyChanged})
       : _client = client ?? http.Client();
 
-  // ── REST: ilk yükleme ─────────────────────────────────────────────────────
+  // ── REST: ilk yükleme ────────────────────────────────────────────────────
 
   Future<Map<String, bool>> getOccupancyMap() async {
     final uri = Uri.parse('$_baseUrl/ParkingSpots');
     final response = await _client.get(uri, headers: {
-      'Accept': 'application/json'
+      'Accept': 'application/json',
+      'x-app-secret': AppConfig.appSecret,
     }).timeout(const Duration(seconds: 10));
 
     if (response.statusCode != 200) {

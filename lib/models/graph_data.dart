@@ -29,6 +29,13 @@ class MapNode {
   bool get isQr => type == NodeType.qr;
 }
 
+/// Park node'unun edge listesinden bağlı QR node'unu bulur
+MapNode? nearestQrForPark(String parkId) {
+  final edge = allEdges.where((e) => e.from == parkId).firstOrNull;
+  if (edge == null) return null;
+  return allNodes.where((n) => n.id == edge.to && n.isQr).firstOrNull;
+}
+
 class MapEdge {
   final String from, to;
   const MapEdge({required this.from, required this.to});

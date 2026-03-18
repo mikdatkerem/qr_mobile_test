@@ -165,7 +165,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _activeZoneId = locationId;
         _isLoading = false;
       });
-      if (_targetPark != null) {
+      if (locationId == 'END') {
+        _clearNavigation();
+        _showGoodbyeDialog();
+      } else if (_targetPark != null) {
         _updateRoute(locationId);
       } else if (locationId == 'START') {
         // START QR → park seçim dialog'u
@@ -176,7 +179,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _showNotification(
             message: 'En yakın boş alan: ${suggested.id}',
             style: NotificationStyle.info,
-            actionLabel: 'Rotala',
+            actionLabel: 'Git',
             onAction: () {
               setState(() {
                 _targetPark = suggested;
@@ -215,12 +218,6 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       if (result == null) {
         _showErrorSnackBar('Bu konumdan hedefe rota bulunamadı');
-      } else {
-        _showNotification(
-          message: '${_targetPark!.id} için rota oluşturuldu',
-          style: NotificationStyle.success,
-          duration: const Duration(seconds: 4),
-        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -271,11 +268,13 @@ class _HomeScreenState extends State<HomeScreen> {
         park: park,
         onConfirm: () {
           Navigator.pop(context);
+          final qrNode = nearestQrForPark(park.id);
           setState(() {
             _parkedAt = park;
             _targetPark = null;
             _navigationRoute = null;
             _distanceLabel = null;
+            if (qrNode != null) _activeZoneId = qrNode.id;
           });
           _showNotification(
             message: 'Araç ${park.id} alanına kaydedildi',
@@ -284,6 +283,78 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
         onDeny: () => Navigator.pop(context),
+      ),
+    );
+  }
+
+  void _showGoodbyeDialog() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black26,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.12),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              )
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(Icons.waving_hand_rounded,
+                    color: Colors.green.shade600, size: 32),
+              ),
+              const SizedBox(height: 16),
+              const Text('Güle Güle!',
+                  style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF1A1A2E))),
+              const SizedBox(height: 8),
+              Text('İyi günler dileriz.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 13, color: Colors.grey.shade500, height: 1.5)),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade500,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                      child: Text('Teşekkürler',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

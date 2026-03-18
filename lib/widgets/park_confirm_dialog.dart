@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../models/graph_data.dart';
 
@@ -16,80 +17,100 @@ class ParkConfirmDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      alignment: Alignment.bottomCenter,
+      insetPadding: EdgeInsets.fromLTRB(
+          12, 0, 12, MediaQuery.of(context).padding.bottom + 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       elevation: 0,
       backgroundColor: Colors.transparent,
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.12),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            )
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(16),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.55),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.15),
+                width: 1,
               ),
-              child: Icon(Icons.local_parking_rounded,
-                  color: Colors.blue.shade600, size: 32),
             ),
-            const SizedBox(height: 16),
-            const Text('Park Başarılı mı?',
-                style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF1A1A2E))),
-            const SizedBox(height: 6),
-            Text('${park.id} alanına park işlemi\ntamamlandı mı?',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 13, color: Colors.grey.shade500, height: 1.4)),
-            const SizedBox(height: 24),
-            Row(children: [
-              Expanded(
-                child: GestureDetector(
+            child: Row(
+              children: [
+                // İkon
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.local_parking_rounded,
+                      color: Colors.white, size: 20),
+                ),
+                const SizedBox(width: 12),
+
+                // Metin
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Park edildi mi?',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          )),
+                      Text('Alan ${park.id}',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 11,
+                          )),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+
+                // Hayır
+                GestureDetector(
                   onTap: onDeny,
                   child: Container(
-                    height: 48,
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.red.shade200),
+                      color: Colors.white.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: Colors.white.withOpacity(0.2), width: 1),
                     ),
                     child: Icon(Icons.close_rounded,
-                        color: Colors.red.shade500, size: 26),
+                        color: Colors.red.shade300, size: 20),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: GestureDetector(
+
+                const SizedBox(width: 8),
+
+                // Evet
+                GestureDetector(
                   onTap: onConfirm,
                   child: Container(
-                    height: 48,
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
-                      color: Colors.green.shade500,
-                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.green.shade500.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(Icons.check_rounded,
-                        color: Colors.white, size: 26),
+                        color: Colors.white, size: 20),
                   ),
                 ),
-              ),
-            ]),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );

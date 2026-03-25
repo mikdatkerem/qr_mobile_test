@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../models/graph_data.dart';
-import '../services/pathfinding_service.dart' show kHospitalNodeId;
 
 class AppDrawer extends StatelessWidget {
   final Map<String, bool> occupancyMap;
@@ -86,7 +85,7 @@ class AppDrawer extends StatelessWidget {
               iconBg: Colors.green.shade600,
               bgColor: Colors.green.shade50,
               label: 'Hastane girişine en yakın',
-              sublabel: 'Giriş noktası: $kHospitalNodeId',
+              sublabel: 'En uygun giriş rotası hesaplanacak',
               arrowColor: Colors.green.shade400,
               onTap: () {
                 Navigator.pop(context);

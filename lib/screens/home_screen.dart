@@ -1,426 +1,393 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import '../models/zone_model.dart';
+
+import '../models/facility_models.dart';
 import '../models/graph_data.dart';
-import '../models/exceptions.dart';
-import '../services/location_service.dart';
-import '../services/zone_service.dart';
-import '../services/pathfinding_service.dart';
+import '../services/facility_service.dart';
 import '../services/parking_service.dart';
-import '../widgets/floor_plan_widget.dart';
+import '../services/pathfinding_service.dart';
 import '../widgets/embedded_scanner.dart';
+import '../widgets/floor_plan_widget.dart';
+import '../widgets/nav_banner.dart';
+import '../widgets/park_bottom_sheet.dart';
+import '../widgets/park_confirm_dialog.dart';
 import '../widgets/park_selector_sheet.dart';
 import '../widgets/park_suggestion_dialog.dart';
-import '../widgets/app_notification.dart';
-import '../widgets/app_drawer.dart';
-import '../widgets/park_confirm_dialog.dart';
-import '../widgets/nav_banner.dart';
-import '../widgets/bottom_bar.dart';
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class MapsScreen extends StatefulWidget {
+  const MapsScreen({super.key});
+
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<MapsScreen> createState() => MapsScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  final LocationService _locationService = LocationService();
-  final ZoneService _zoneService = ZoneService();
-  final PathfindingService _pathfinder = PathfindingService();
+class MapsScreenState extends State<MapsScreen> {
+  final _facilityService = FacilityService();
+  final _pathfinder = PathfindingService();
+  final _scannerController =
+      MobileScannerController(detectionSpeed: DetectionSpeed.noDuplicates);
+  final _sheetController = DraggableScrollableController();
   late final ParkingService _parkingService;
-  final MobileScannerController _scannerController = MobileScannerController(
-    detectionSpeed: DetectionSpeed.noDuplicates,
-  );
 
-  List<ZoneModel> _zones = [];
-  final List<String> _visitedOrder = [];
-  Set<String> get _visitedIds => _visitedOrder.toSet();
+  List<OrganizationSummary> _organizations = [];
+  OrganizationHierarchy? _hierarchy;
+  SiteHierarchy? _site;
+  BuildingHierarchy? _building;
+  FloorHierarchy? _floor;
+  PublishedMapData? _map;
+  List<MapNode> _displayNodes = const [];
 
-  String? _activeZoneId;
-  bool _isLoading = false;
-  bool _zonesLoading = true;
+  bool _busy = false;
+  bool _loading = true;
   MapNode? _targetPark;
-  List<MapNode>? _navigationRoute;
-  String? _distanceLabel;
-  Map<String, bool> _occupancyMap = {};
   MapNode? _parkedAt;
-  AppNotificationBar? _notification;
-
-  String? _lastScannedId;
-  DateTime? _lastScannedTime;
-
-  MapNode? get _suggestedPark {
-    if (_targetPark != null) return null;
-    final emptyParks = allNodes
-        .where((n) => n.isPark && _occupancyMap[n.id] == false)
-        .toList();
-    if (emptyParks.isEmpty) return null;
-    if (_activeZoneId != null) {
-      final active = allNodes.where((n) => n.id == _activeZoneId).firstOrNull;
-      if (active != null) {
-        emptyParks.sort((a, b) {
-          double d(MapNode n) =>
-              (n.x - active.x) * (n.x - active.x) +
-              (n.y - active.y) * (n.y - active.y);
-          return d(a).compareTo(d(b));
-        });
-      }
-    }
-    return emptyParks.first;
-  }
-
-  // ── Lifecycle ────────────────────────────────────────────────────────────
+  List<MapNode>? _route;
+  MultiRouteResult? _multiRoute;
+  int _activeRouteSegmentIndex = 0;
+  String? _distanceLabel;
+  String? _lastScan;
+  DateTime? _lastScanTime;
+  Map<String, bool> _occupancy = {};
 
   @override
   void initState() {
     super.initState();
     _parkingService = ParkingService(onOccupancyChanged: _onOccupancyChanged);
-    _loadZones();
-    _loadOccupancy();
+    unawaited(_bootstrap());
   }
 
   @override
   void dispose() {
     _scannerController.dispose();
-    _locationService.dispose();
-    _zoneService.dispose();
+    _sheetController.dispose();
     _parkingService.dispose();
     super.dispose();
   }
 
-  // ── Veri yükleme ─────────────────────────────────────────────────────────
+  Future<void> _bootstrap() async {
+    await _loadFacilityContext();
+    await _parkingService.startListening();
+  }
 
-  Future<void> _loadZones() async {
+  Future<void> _loadFacilityContext() async {
     try {
-      final zones = await _zoneService.getZones();
+      final organizations = await _facilityService.getOrganizations();
+      final hierarchy =
+          await _facilityService.getOrganizationHierarchy(organizations.first.id);
+      final selection = _firstPublishedFloor(hierarchy);
+      if (selection == null) {
+        throw Exception('Yayinlanmis harita bulunamadi.');
+      }
+      await _applySelection(
+        hierarchy: hierarchy,
+        site: selection.site,
+        building: selection.building,
+        floor: selection.floor,
+        organizations: organizations,
+      );
+    } catch (error) {
       if (!mounted) return;
-      setState(() {
-        _zones = zones;
-        _zonesLoading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _zonesLoading = false);
-      _showErrorSnackBar('Zone listesi yüklenemedi');
+      setState(() => _loading = false);
+      _showError(error);
     }
   }
 
   Future<void> _loadOccupancy() async {
-    for (int i = 0; i < 3; i++) {
-      try {
-        final map = await _parkingService.getOccupancyMap();
-        if (mounted) setState(() => _occupancyMap = map);
-        break;
-      } catch (e) {
-        if (i < 2)
-          await Future.delayed(const Duration(seconds: 2));
-        else if (mounted) _showErrorSnackBar('Park durumu yüklenemedi: $e');
-      }
+    final floor = _floor;
+    if (floor == null) {
+      return;
     }
+
     try {
-      await _parkingService.startListening();
-    } catch (e) {
-      if (mounted) _showErrorSnackBar('SignalR bağlantısı kurulamadı: $e');
+      final occupancy = await _parkingService.getOccupancyMap(floor.id);
+      if (mounted) {
+        setState(() => _occupancy = _normalizeOccupancy(occupancy));
+      }
+    } catch (error) {
+      if (mounted) _showError('Park durumu yuklenemedi: $error');
     }
   }
 
-  // ── SignalR callback ──────────────────────────────────────────────────────
+  Map<String, bool> _normalizeOccupancy(Map<String, bool> occupancy) =>
+      occupancy.map((key, value) => MapEntry(key.toUpperCase(), value));
+
+  Future<void> _applySelection({
+    required OrganizationHierarchy hierarchy,
+    required SiteHierarchy site,
+    required BuildingHierarchy building,
+    required FloorHierarchy floor,
+    List<OrganizationSummary>? organizations,
+  }) async {
+    if (mounted) setState(() => _loading = true);
+    final publishedMap = await _facilityService.getPublishedMap(floor.id);
+    replaceGraph(
+      nodes: publishedMap.nodes,
+      edges: publishedMap.edges,
+      mapAssetPath: publishedMap.assetPath,
+      mapAssetContentType: publishedMap.assetContentType,
+      mapWidth: publishedMap.width,
+      mapHeight: publishedMap.height,
+    );
+    if (!mounted) return;
+    setState(() {
+      _organizations = organizations ?? _organizations;
+      _hierarchy = hierarchy;
+      _site = site;
+      _building = building;
+      _floor = floor;
+      _map = publishedMap;
+      _displayNodes = publishedMap.nodes;
+      _loading = false;
+      _targetPark = null;
+      _route = null;
+      _multiRoute = null;
+      _activeRouteSegmentIndex = 0;
+      _distanceLabel = null;
+      _lastScan = null;
+    });
+    await _loadOccupancy();
+  }
 
   void _onOccupancyChanged(String spotId, bool isOccupied) {
     if (!mounted) return;
-    final wasEmpty = _occupancyMap[spotId] == false;
-    setState(() => _occupancyMap[spotId] = isOccupied);
-
-    // Hedef park boş→dolu geçişi yaptıysa park onayı sor
-    if (isOccupied && wasEmpty && _targetPark?.id == spotId) {
-      _showParkConfirmDialog(spotId);
+    final key = spotId.toUpperCase();
+    if (!_occupancy.containsKey(key)) {
+      return;
+    }
+    final wasEmpty = _occupancy[key] == false;
+    setState(() => _occupancy[key] = isOccupied);
+    final targetRef = (_targetPark?.externalReferenceId ?? _targetPark?.id)?.toUpperCase();
+    if (isOccupied && wasEmpty && targetRef == key) {
+      _showParkConfirmDialog(key);
     }
   }
-
-  // ── QR tarama ────────────────────────────────────────────────────────────
 
   Future<void> _onQrDetected(BarcodeCapture capture) async {
-    final raw = capture.barcodes.firstOrNull?.rawValue?.trim();
-    if (raw == null || raw.isEmpty) return;
+    final value = capture.barcodes.firstOrNull?.rawValue?.trim();
+    if (value == null || value.isEmpty) return;
     final now = DateTime.now();
-    if (raw == _lastScannedId &&
-        _lastScannedTime != null &&
-        now.difference(_lastScannedTime!) < const Duration(seconds: 3)) return;
-    _lastScannedId = raw;
-    _lastScannedTime = now;
-    await _handleScannedId(raw);
+    if (_lastScan == value &&
+        _lastScanTime != null &&
+        now.difference(_lastScanTime!) < const Duration(seconds: 3)) {
+      return;
+    }
+    _lastScan = value;
+    _lastScanTime = now;
+    await openByQrReference(value);
   }
 
-  Future<void> _handleScannedId(String locationId) async {
-    if (_isLoading) return;
+  Future<void> openByQrReference(String referenceId) async {
+    if (_busy) return;
     await HapticFeedback.mediumImpact();
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _busy = true);
     try {
-      await _locationService.getLocation(locationId);
+      final context = await _facilityService.resolveQrScanContext(referenceId);
+      await _applyScanContext(context);
       if (!mounted) return;
-      setState(() {
-        if (!_visitedIds.contains(locationId)) _visitedOrder.add(locationId);
-        _activeZoneId = locationId;
-        _isLoading = false;
-      });
-      if (locationId == 'END') {
-        _clearNavigation();
-        _showGoodbyeDialog();
-      } else if (_targetPark != null) {
-        _updateRoute(locationId);
-      } else if (locationId == 'START') {
-        // START QR → park seçim dialog'u
-        _showParkSuggestionDialog();
+      setState(() => _busy = false);
+      if (_targetPark != null) {
+        await _updateRoute(referenceId);
       } else {
-        final suggested = _suggestedPark;
-        if (suggested != null) {
-          _showNotification(
-            message: 'En yakın boş alan: ${suggested.id}',
-            style: NotificationStyle.info,
-            actionLabel: 'Git',
-            onAction: () {
-              setState(() {
-                _targetPark = suggested;
-                _navigationRoute = null;
-              });
-              _updateRoute(locationId);
-            },
-          );
-        }
+        _showSuggestionDialog();
       }
-    } on LocationNotFoundException catch (e) {
+    } catch (error) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
-      _showErrorSnackBar('Bilinmeyen konum: ${e.locationId}');
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      _showErrorSnackBar(e.message);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-      _showErrorSnackBar('Beklenmeyen bir hata oluştu');
+      setState(() => _busy = false);
+      _showError(error);
     }
   }
 
-  // ── Navigasyon ────────────────────────────────────────────────────────────
+  Future<void> _applyScanContext(QrScanContext context) async {
+    final hierarchy = _hierarchy?.id == context.organizationId
+        ? _hierarchy!
+        : await _facilityService.getOrganizationHierarchy(context.organizationId);
+    final site = hierarchy.sites.where((item) => item.id == context.siteId).firstOrNull;
+    final building =
+        site?.buildings.where((item) => item.id == context.buildingId).firstOrNull;
+    final floor =
+        building?.floors.where((item) => item.id == context.floorId).firstOrNull;
+    if (site == null || building == null || floor == null) {
+      throw Exception('QR baglami icin kat bulunamadi.');
+    }
+    if (_floor?.id != floor.id || _hierarchy?.id != hierarchy.id) {
+      await _applySelection(
+        hierarchy: hierarchy,
+        site: site,
+        building: building,
+        floor: floor,
+      );
+    }
+    _lastScan = context.referenceId;
+  }
 
-  Future<void> _updateRoute(String fromId) async {
-    if (_targetPark == null) return;
+  Future<void> _updateRoute(String fromReferenceId) async {
+    if (_targetPark == null || _floor == null) return;
     try {
-      final result = await _pathfinder.findPathFromApi(fromId, _targetPark!.id);
+      final result = await _pathfinder.findFacilityRoute(
+        floorId: _floor!.id,
+        fromReferenceId: fromReferenceId,
+        toReferenceId: _targetPark!.externalReferenceId ?? _targetPark!.id,
+      );
       if (!mounted) return;
-      setState(() {
-        _navigationRoute = result?.nodes;
-        _distanceLabel = result?.distanceLabel;
-      });
-      if (result == null) {
-        _showErrorSnackBar('Bu konumdan hedefe rota bulunamadı');
+      if (result != null) {
+        setState(() {
+          _multiRoute = null;
+          _activeRouteSegmentIndex = 0;
+          _route = result.nodes;
+          _displayNodes = _map?.nodes ?? allNodes;
+          _distanceLabel = result.distanceLabel;
+          if (result.mapAssetPath != null) {
+            currentMapAssetPath = result.mapAssetPath;
+            currentMapWidth = result.mapWidth ?? currentMapWidth;
+            currentMapHeight = result.mapHeight ?? currentMapHeight;
+          }
+        });
+        return;
       }
-    } catch (e) {
+
+      final multiRoute = await _pathfinder.findFacilityMultiRoute(
+        fromReferenceId: fromReferenceId,
+        toReferenceId: _targetPark!.externalReferenceId ?? _targetPark!.id,
+      );
+
       if (!mounted) return;
-      _showErrorSnackBar('Rota hesaplanamadı: $e');
+      if (multiRoute == null || multiRoute.segments.isEmpty) {
+        _showError('Bu konumdan hedefe rota bulunamadi.');
+        return;
+      }
+
+      setState(() {
+        _multiRoute = multiRoute;
+        _activeRouteSegmentIndex = 0;
+        _distanceLabel = multiRoute.distanceLabel;
+      });
+
+      await _showRouteSegment(0);
+    } catch (error) {
+      _showError('Rota hesaplanamadi: $error');
     }
   }
 
-  void _clearNavigation() {
+  Future<void> _showRouteSegment(int index) async {
+    final multiRoute = _multiRoute;
+    if (multiRoute == null || index < 0 || index >= multiRoute.segments.length) {
+      return;
+    }
+
+    final segment = multiRoute.segments[index];
+    final occupancy = await _parkingService.getOccupancyMap(segment.floorId);
+
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
-      _targetPark = null;
-      _navigationRoute = null;
-      _distanceLabel = null;
+      _activeRouteSegmentIndex = index;
+      _route = segment.nodes;
+      _displayNodes = segment.nodes;
+      _occupancy = _normalizeOccupancy(occupancy);
+      currentMapAssetPath = segment.mapAssetPath;
+      currentMapAssetContentType = segment.mapAssetContentType;
+      currentMapWidth = segment.mapWidth;
+      currentMapHeight = segment.mapHeight;
     });
   }
 
-  void _navigateToExit() {
-    Navigator.pop(context);
-    final exit = allNodes.where((n) => n.id == 'END').firstOrNull;
-    if (exit == null) return;
-    setState(() {
-      _targetPark = exit;
-      _navigationRoute = null;
-      _distanceLabel = null;
-    });
-    if (_activeZoneId != null) _updateRoute(_activeZoneId!);
-  }
-
-  void _navigateToCar() {
-    if (_parkedAt == null) return;
-    Navigator.pop(context);
-    setState(() {
-      _targetPark = _parkedAt;
-      _navigationRoute = null;
-      _distanceLabel = null;
-    });
-    if (_activeZoneId != null) _updateRoute(_activeZoneId!);
-  }
-
-  // ── Dialogs ───────────────────────────────────────────────────────────────
-
-  void _showParkConfirmDialog(String spotId) {
-    final park = allNodes.where((n) => n.id == spotId).firstOrNull;
-    if (park == null) return;
-    showDialog(
-      context: context,
-      barrierColor: Colors.black26,
-      builder: (_) => ParkConfirmDialog(
-        park: park,
-        onConfirm: () {
-          Navigator.pop(context);
-          final qrNode = nearestQrForPark(park.id);
-          setState(() {
-            _parkedAt = park;
-            _targetPark = null;
-            _navigationRoute = null;
-            _distanceLabel = null;
-            if (qrNode != null) _activeZoneId = qrNode.id;
-          });
-          _showNotification(
-            message: 'Araç ${park.id} alanına kaydedildi',
-            style: NotificationStyle.success,
-            duration: const Duration(seconds: 5),
-          );
-        },
-        onDeny: () => Navigator.pop(context),
-      ),
-    );
-  }
-
-  void _showGoodbyeDialog() {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black26,
-      builder: (_) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        backgroundColor: Colors.transparent,
-        child: Container(
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.12),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              )
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(Icons.waving_hand_rounded,
-                    color: Colors.green.shade600, size: 32),
-              ),
-              const SizedBox(height: 16),
-              const Text('Güle Güle!',
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF1A1A2E))),
-              const SizedBox(height: 8),
-              Text('İyi günler dileriz.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 13, color: Colors.grey.shade500, height: 1.5)),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade500,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Center(
-                      child: Text('Teşekkürler',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showParkSuggestionDialog() {
-    if (_activeZoneId == null) return;
-    final nearestToUser =
-        _pathfinder.nearestEmptyParkToUser(_activeZoneId!, _occupancyMap);
-    final nearestToHospital =
-        _pathfinder.nearestEmptyParkToHospital(_occupancyMap);
-
+  void _showSuggestionDialog() {
+    if (_lastScan == null) return;
     showDialog(
       context: context,
       barrierColor: Colors.black26,
       builder: (_) => ParkSuggestionDialog(
-        nearestToUser: nearestToUser,
-        nearestToHospital: nearestToHospital,
+        nearestToUser: _pathfinder.nearestEmptyParkToUser(_lastScan!, _occupancy),
+        nearestToHospital: null,
         onSelected: (park) {
           setState(() {
             _targetPark = park;
-            _navigationRoute = null;
+            _route = null;
+            _multiRoute = null;
           });
-          _updateRoute(_activeZoneId!);
+          unawaited(_updateRoute(_lastScan!));
         },
       ),
     );
   }
 
-  void _navigateNearestToUser() {
-    if (_activeZoneId == null) {
-      _showErrorSnackBar('Önce bir QR kodu okutun');
+  Future<void> _navigateToBestExit() async {
+    if (_lastScan == null) {
+      _showError('Once bir QR kodu okutun.');
       return;
     }
-    final park =
-        _pathfinder.nearestEmptyParkToUser(_activeZoneId!, _occupancyMap);
-    if (park == null) {
-      _showErrorSnackBar('Boş park alanı bulunamadı');
-      return;
+
+    try {
+      final result = await _pathfinder.findBestExitRoute(fromReferenceId: _lastScan!);
+      if (result == null || result.segments.isEmpty) {
+        _showError('Cikis rotasi bulunamadi.');
+        return;
+      }
+
+      setState(() {
+        _targetPark = null;
+        _multiRoute = result;
+        _activeRouteSegmentIndex = 0;
+        _distanceLabel = result.distanceLabel;
+      });
+
+      await _showRouteSegment(0);
+    } catch (error) {
+      _showError('Cikis rotasi hesaplanamadi: $error');
     }
-    setState(() {
-      _targetPark = park;
-      _navigationRoute = null;
-    });
-    _updateRoute(_activeZoneId!);
   }
 
-  void _navigateNearestToHospital() {
-    if (_activeZoneId == null) {
-      _showErrorSnackBar('Önce bir QR kodu okutun');
+  Future<void> _selectParkingNearEntrance() async {
+    if (_lastScan == null) {
+      _showError('Once bir QR kodu okutun.');
       return;
     }
-    final park = _pathfinder.nearestEmptyParkToHospital(_occupancyMap);
-    if (park == null) {
-      _showErrorSnackBar('Boş park alanı bulunamadı');
-      return;
+
+    try {
+      final result = await _pathfinder.findRecommendedParkingNearEntrance(
+        fromReferenceId: _lastScan!,
+      );
+
+      if (result == null || result.segments.isEmpty) {
+        _showError('Giris yakin uygun park alani bulunamadi.');
+        return;
+      }
+
+      final lastNode = result.segments.last.nodes.last;
+      final target = MapNode(
+        id: result.target.code.toUpperCase(),
+        label: result.target.label,
+        x: lastNode.x,
+        y: lastNode.y,
+        type: NodeType.park,
+        externalReferenceId: result.target.externalReferenceId,
+      );
+
+      setState(() {
+        _targetPark = target;
+        _multiRoute = MultiRouteResult(
+          segments: result.segments,
+          distanceMeters: result.distanceMeters,
+          distanceLabel: result.distanceLabel,
+        );
+        _activeRouteSegmentIndex = 0;
+        _distanceLabel = result.distanceLabel;
+      });
+
+      await _showRouteSegment(0);
+    } catch (error) {
+      _showError('Giris yakin park onerisi alinamadi: $error');
     }
-    setState(() {
-      _targetPark = park;
-      _navigationRoute = null;
-    });
-    _updateRoute(_activeZoneId!);
   }
 
   void _showParkSelector() {
-    if (_activeZoneId == null) {
-      _showErrorSnackBar('Önce bir QR kodu okutun');
+    if (_lastScan == null) {
+      _showError('Once bir QR kodu okutun.');
       return;
     }
     showModalBottomSheet(
@@ -429,256 +396,672 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => ParkSelectorSheet(
         pathfinder: _pathfinder,
-        occupancyMap: _occupancyMap,
+        occupancyMap: _occupancy,
         onParkSelected: (park) {
           setState(() {
             _targetPark = park;
-            _navigationRoute = null;
+            _route = null;
+            _multiRoute = null;
           });
-          _updateRoute(_activeZoneId!);
+          unawaited(_updateRoute(_lastScan!));
         },
       ),
     );
   }
 
-  void _showTestPicker() {
+  void _showParkConfirmDialog(String spotId) {
+    final park = allNodes
+        .where((node) => (node.externalReferenceId ?? node.id).toUpperCase() == spotId)
+        .firstOrNull;
+    if (park == null) return;
+    showDialog(
+      context: context,
+      barrierColor: Colors.black26,
+      builder: (_) => ParkConfirmDialog(
+        park: park,
+        onConfirm: () {
+          Navigator.pop(context);
+          setState(() {
+            _parkedAt = park;
+            _targetPark = null;
+            _route = null;
+            _multiRoute = null;
+            _displayNodes = _map?.nodes ?? allNodes;
+            _distanceLabel = null;
+          });
+        },
+        onDeny: () => Navigator.pop(context),
+      ),
+    );
+  }
+
+  void _showPicker<T>({
+    required List<T> items,
+    required T? selected,
+    required String Function(T) title,
+    String Function(T)? subtitle,
+    required Future<void> Function(T) onSelected,
+  }) {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 12),
-            Text('Test: QR Simüle Et',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: MediaQuery.of(context).size.height * 0.5,
-              child: ListView.separated(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                itemCount: _zones.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (_, i) {
-                  final zone = _zones[i];
-                  final visited = _visitedIds.contains(zone.id);
-                  return ListTile(
-                    dense: true,
-                    leading: CircleAvatar(
-                      radius: 14,
-                      backgroundColor: visited
-                          ? Colors.green.shade100
-                          : Colors.grey.shade100,
-                      child: Text(zone.id.replaceAll(RegExp(r'[^0-9]'), ''),
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: visited
-                                  ? Colors.green.shade700
-                                  : Colors.grey.shade600)),
-                    ),
-                    title: Text(zone.label),
-                    subtitle: Text(zone.id),
-                    trailing: visited
-                        ? Icon(Icons.check_circle,
-                            color: Colors.green.shade500, size: 18)
-                        : null,
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _handleScannedId(zone.id);
-                    },
-                  );
-                },
-              ),
-            ),
-            SizedBox(height: MediaQuery.of(context).padding.bottom),
-          ],
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: ListView.separated(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+          itemCount: items.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (_, index) {
+            final item = items[index];
+            return ListTile(
+              title: Text(title(item), style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: subtitle != null ? Text(subtitle(item)) : null,
+              trailing: identical(item, selected)
+                  ? const Icon(Icons.check_circle, color: Color(0xFF2155D6))
+                  : null,
+              onTap: () async {
+                Navigator.pop(sheetContext);
+                await onSelected(item);
+              },
+            );
+          },
         ),
       ),
     );
   }
 
-  // ── Yardımcılar ───────────────────────────────────────────────────────────
-
-  void _showNotification({
-    required String message,
-    NotificationStyle style = NotificationStyle.info,
-    String? actionLabel,
-    VoidCallback? onAction,
-    String? secondaryActionLabel,
-    VoidCallback? onSecondaryAction,
-    Duration duration = const Duration(seconds: 6),
-  }) {
-    setState(() {
-      _notification = AppNotificationBar(
-        key: UniqueKey(),
-        message: message,
-        style: style,
-        actionLabel: actionLabel,
-        onAction: onAction,
-        secondaryActionLabel: secondaryActionLabel,
-        onSecondaryAction: onSecondaryAction,
-        duration: duration,
-        onDismiss: () => setState(() => _notification = null),
+  void _showOrganizationPicker() => _showPicker<OrganizationSummary>(
+        items: _organizations,
+        selected: _organizations.where((o) => o.id == _hierarchy?.id).firstOrNull,
+        title: (item) => item.name,
+        subtitle: (item) => item.description ?? '',
+        onSelected: (organization) async {
+          final hierarchy = await _facilityService.getOrganizationHierarchy(organization.id);
+          final selection = _firstPublishedFloor(hierarchy);
+          if (selection == null) throw Exception('Yayinlanmis harita bulunamadi.');
+          await _applySelection(
+            hierarchy: hierarchy,
+            site: selection.site,
+            building: selection.building,
+            floor: selection.floor,
+          );
+        },
       );
-    });
+
+  void _showSitePicker() {
+    final hierarchy = _hierarchy;
+    if (hierarchy == null) return;
+    _showPicker<SiteHierarchy>(
+      items: hierarchy.sites,
+      selected: _site,
+      title: (item) => item.name,
+      subtitle: (item) => item.code,
+      onSelected: (site) async {
+        final selection = _firstPublishedFloorInSite(site);
+        if (selection == null) throw Exception('Yayinlanmis harita bulunamadi.');
+        await _applySelection(
+          hierarchy: hierarchy,
+          site: selection.site,
+          building: selection.building,
+          floor: selection.floor,
+        );
+      },
+    );
   }
 
-  void _showErrorSnackBar(String message) {
+  void _showBuildingPicker() {
+    final hierarchy = _hierarchy;
+    final site = _site;
+    if (hierarchy == null || site == null) return;
+    _showPicker<BuildingHierarchy>(
+      items: site.buildings,
+      selected: _building,
+      title: (item) => item.name,
+      subtitle: (item) => item.code,
+      onSelected: (building) async {
+        final floor = _firstPublishedFloorInBuilding(building);
+        if (floor == null) throw Exception('Yayinlanmis harita bulunamadi.');
+        await _applySelection(
+          hierarchy: hierarchy,
+          site: site,
+          building: building,
+          floor: floor,
+        );
+      },
+    );
+  }
+
+  void _showFloorPicker() {
+    final hierarchy = _hierarchy;
+    if (hierarchy == null) return;
+    final options = <_FloorOption>[
+      for (final site in hierarchy.sites)
+        for (final building in site.buildings)
+          for (final floor in building.floors.where((item) => item.hasPublishedMap))
+            _FloorOption(site: site, building: building, floor: floor),
+    ];
+    _showPicker<_FloorOption>(
+      items: options,
+      selected: options.where((o) => o.floor.id == _floor?.id).firstOrNull,
+      title: (item) => item.floor.name,
+      subtitle: (item) => '${item.site.name} / ${item.building.name}',
+      onSelected: (item) => _applySelection(
+        hierarchy: hierarchy,
+        site: item.site,
+        building: item.building,
+        floor: item.floor,
+      ),
+    );
+  }
+
+  _FloorOption? _firstPublishedFloor(OrganizationHierarchy hierarchy) {
+    for (final site in hierarchy.sites) {
+      final selection = _firstPublishedFloorInSite(site);
+      if (selection != null) return selection;
+    }
+    return null;
+  }
+
+  _FloorOption? _firstPublishedFloorInSite(SiteHierarchy site) {
+    for (final building in site.buildings) {
+      final floor = _firstPublishedFloorInBuilding(building);
+      if (floor != null) return _FloorOption(site: site, building: building, floor: floor);
+    }
+    return null;
+  }
+
+  FloorHierarchy? _firstPublishedFloorInBuilding(BuildingHierarchy building) {
+    for (final floor in building.floors) {
+      if (floor.hasPublishedMap) return floor;
+    }
+    return null;
+  }
+
+  void _showError(Object error) {
+    final message = error.toString().replaceFirst('Exception: ', '');
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Row(children: [
-          const Icon(Icons.error_outline, color: Colors.white, size: 20),
-          const SizedBox(width: 10),
-          Expanded(child: Text(message)),
-        ]),
-        backgroundColor: Colors.red.shade700,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 4),
-      ));
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
   }
-
-  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
+    final emptyCount = _occupancy.values.where((value) => value == false).length;
+    final fullCount = _occupancy.values.where((value) => value == true).length;
+    final activeNodeId = _displayNodes
+        .where((node) => node.externalReferenceId == _lastScan)
+        .firstOrNull
+        ?.id;
+
     return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 237, 218, 155),
-      drawer: AppDrawer(
-        occupancyMap: _occupancyMap,
-        suggestedPark: _suggestedPark,
-        activeZoneId: _activeZoneId,
-        targetPark: _targetPark,
-        parkedAt: _parkedAt,
-        onParkSelected: (park) {
-          setState(() {
-            _targetPark = park;
-            _navigationRoute = null;
-          });
-          if (_activeZoneId != null) _updateRoute(_activeZoneId!);
-          Navigator.pop(context);
-        },
-        onNavigateToExit: _navigateToExit,
-        onNavigateToCar: _navigateToCar,
-        onClearNav: _clearNavigation,
-        onNearestToUser: _navigateNearestToUser,
-        onNearestToHospital: _navigateNearestToHospital,
-      ),
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.asset('assets/mustang.jpeg',
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    Container(color: Colors.grey.shade800)),
-            Positioned(
-              left: 4,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                  child: Builder(
-                      builder: (ctx) => IconButton(
-                            icon: const Icon(Icons.menu, color: Colors.white),
-                            onPressed: () => Scaffold.of(ctx).openDrawer(),
-                          ))),
-            ),
-            Positioned(
-              right: 4,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                  child: IconButton(
-                icon: const Icon(Icons.qr_code, color: Colors.white),
-                tooltip: 'Test QR',
-                onPressed: _zones.isEmpty ? null : _showTestPicker,
-              )),
-            ),
-          ],
-        ),
-      ),
-      body: _zonesLoading
+      backgroundColor: const Color(0xFFF3F6FB),
+      body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : Column(
+          : Stack(
               children: [
-                EmbeddedScanner(
-                  controller: _scannerController,
-                  onDetect: _onQrDetected,
-                  isLoading: _isLoading,
-                ),
-                if (_targetPark != null)
-                  NavBanner(
-                    targetPark: _targetPark!,
-                    distanceLabel: _distanceLabel,
-                    onClear: _clearNavigation,
-                    onTap: _showParkSelector,
-                  ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey.shade300),
-                          boxShadow: [
-                            BoxShadow(
-                                color: Colors.black.withOpacity(0.06),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4))
+                SafeArea(
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.qr_code_2_rounded, color: Color(0xFF2155D6)),
+                            const SizedBox(width: 10),
+                            const Text('Haritalar',
+                                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
+                            const Spacer(),
+                            TextButton.icon(
+                              onPressed: () => _showPicker<MapNode>(
+                                items: allNodes.where((node) => node.isQr).toList(),
+                                selected: null,
+                                title: (item) => item.label,
+                                subtitle: (item) => item.externalReferenceId ?? item.id,
+                                onSelected: (item) =>
+                                    openByQrReference(item.externalReferenceId ?? item.id),
+                              ),
+                              icon: const Icon(Icons.qr_code_rounded),
+                              label: const Text('Test QR'),
+                            ),
                           ],
                         ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: Stack(children: [
-                            FloorPlanWidget(
-                              zones: _zones,
-                              visitedIds: _visitedIds,
-                              activeZoneId: _activeZoneId,
-                              navigationRoute: _navigationRoute,
-                              occupancyMap: _occupancyMap,
-                            ),
-                            if (_notification != null)
-                              Positioned(
-                                left: 0,
-                                right: 0,
-                                bottom: 8,
-                                child: AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 300),
-                                  child: _notification,
-                                ),
-                              ),
-                          ]),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                        child: _ContextCard(
+                          organization: _hierarchy?.name ?? 'Organizasyon',
+                          site: _site?.name ?? 'Yerleske',
+                          building: _building?.name ?? 'Bina',
+                          floor: _floor?.name ?? 'Kat',
+                          onOrganizationTap: _showOrganizationPicker,
+                          onSiteTap: _showSitePicker,
+                          onBuildingTap: _showBuildingPicker,
+                          onFloorTap: _showFloorPicker,
                         ),
                       ),
-                    ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: Column(
+                            children: [
+                              EmbeddedScanner(
+                                controller: _scannerController,
+                                onDetect: _onQrDetected,
+                                isLoading: _busy,
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(child: _InfoChip(title: 'Aktif Nokta', value: _lastScan ?? 'QR bekleniyor', icon: Icons.pin_drop_outlined)),
+                                  const SizedBox(width: 10),
+                                  Expanded(child: _InfoChip(title: 'Bos Yer', value: '$emptyCount', icon: Icons.local_parking_outlined)),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (_targetPark != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                          child: NavBanner(
+                            targetPark: _targetPark!,
+                            distanceLabel: _distanceLabel,
+                            onClear: () => setState(() {
+                              _targetPark = null;
+                              _route = null;
+                              _distanceLabel = null;
+                            }),
+                            onTap: _showParkSelector,
+                          ),
+                        ),
+                      if (_multiRoute != null && _multiRoute!.segments.length > 1)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                          child: _RouteSegmentsCard(
+                            result: _multiRoute!,
+                            activeIndex: _activeRouteSegmentIndex,
+                            onSegmentTap: (index) => unawaited(_showRouteSegment(index)),
+                          ),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.all(18),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(22),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(_map?.name ?? 'Harita',
+                                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '$emptyCount BOS / $fullCount DOLU / ${_occupancy.length} TOPLAM',
+                                      style: const TextStyle(color: Color(0xFF1BA46C), fontWeight: FontWeight.w700),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            InkWell(
+                              onTap: _showParkSelector,
+                              borderRadius: BorderRadius.circular(18),
+                              child: Container(
+                                width: 62,
+                                height: 62,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                                child: const Icon(Icons.search_rounded, color: Color(0xFF6F7992)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(26),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(26),
+                              child: FloorPlanWidget(
+                                visitedIds: const {},
+                                activeZoneId: activeNodeId,
+                                navigationRoute: _route,
+                                occupancyMap: _occupancy,
+                                nodes: _displayNodes,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SafeArea(top: false, child: BottomBar()),
+                ParkBottomSheet(
+                  controller: _sheetController,
+                  occupancyMap: _occupancy,
+                  targetPark: _targetPark,
+                  parkedAt: _parkedAt,
+                  onParkSelected: (park) {
+                    _sheetController.animateTo(0.045,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutCubic);
+                    setState(() {
+                      _targetPark = park;
+                      _route = null;
+                      _multiRoute = null;
+                    });
+                    if (_lastScan != null) unawaited(_updateRoute(_lastScan!));
+                  },
+                  onNavigateToExit: () {
+                    unawaited(_navigateToBestExit());
+                  },
+                  onNavigateToCar: () {
+                    if (_parkedAt == null || _lastScan == null) return;
+                    setState(() => _targetPark = _parkedAt);
+                    unawaited(_updateRoute(_lastScan!));
+                  },
+                  onClearNav: () => setState(() {
+                    _targetPark = null;
+                    _route = null;
+                    _multiRoute = null;
+                    _displayNodes = _map?.nodes ?? allNodes;
+                    _distanceLabel = null;
+                  }),
+                  onNearestToUser: () {
+                    if (_lastScan == null) return;
+                    final park = _pathfinder.nearestEmptyParkToUser(_lastScan!, _occupancy);
+                    if (park == null) return;
+                    setState(() {
+                      _targetPark = park;
+                      _multiRoute = null;
+                    });
+                    unawaited(_updateRoute(_lastScan!));
+                  },
+                  onNearestToHospital: () {
+                    unawaited(_selectParkingNearEntrance());
+                  },
+                ),
               ],
             ),
     );
   }
+}
+
+class _ContextCard extends StatelessWidget {
+  const _ContextCard({
+    required this.organization,
+    required this.site,
+    required this.building,
+    required this.floor,
+    required this.onOrganizationTap,
+    required this.onSiteTap,
+    required this.onBuildingTap,
+    required this.onFloorTap,
+  });
+
+  final String organization;
+  final String site;
+  final String building;
+  final String floor;
+  final VoidCallback onOrganizationTap;
+  final VoidCallback onSiteTap;
+  final VoidCallback onBuildingTap;
+  final VoidCallback onFloorTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          _SelectionChip(label: organization, icon: Icons.apartment_rounded, onTap: onOrganizationTap),
+          _SelectionChip(label: site, icon: Icons.location_city_rounded, onTap: onSiteTap),
+          _SelectionChip(label: building, icon: Icons.business_rounded, onTap: onBuildingTap),
+          _SelectionChip(label: floor, icon: Icons.layers_rounded, onTap: onFloorTap),
+        ],
+      ),
+    );
+  }
+}
+
+class _SelectionChip extends StatelessWidget {
+  const _SelectionChip({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F7FC),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE3E9F4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: const Color(0xFF2155D6)),
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 128),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF1D2435)),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.expand_more_rounded, size: 18, color: Color(0xFF7C869C)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({
+    required this.title,
+    required this.value,
+    required this.icon,
+  });
+
+  final String title;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F7FC),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: const Color(0xFF2155D6)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: Color(0xFF7B849A), fontSize: 12)),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Color(0xFF1D2435), fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RouteSegmentsCard extends StatelessWidget {
+  const _RouteSegmentsCard({
+    required this.result,
+    required this.activeIndex,
+    required this.onSegmentTap,
+  });
+
+  final MultiRouteResult result;
+  final int activeIndex;
+  final ValueChanged<int> onSegmentTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.alt_route_rounded, color: Color(0xFF2155D6)),
+              const SizedBox(width: 8),
+              const Text(
+                'Katlar Arasi Rota',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+              const Spacer(),
+              Text(
+                result.distanceLabel,
+                style: const TextStyle(
+                  color: Color(0xFF6F7992),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 54,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: result.segments.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, index) {
+                final segment = result.segments[index];
+                final isActive = index == activeIndex;
+
+                return InkWell(
+                  onTap: () => onSegmentTap(index),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isActive ? const Color(0xFF2155D6) : const Color(0xFFF5F7FC),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isActive ? const Color(0xFF2155D6) : const Color(0xFFE2E8F3),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '${segment.buildingName} / ${segment.floorName}',
+                          style: TextStyle(
+                            color: isActive ? Colors.white : const Color(0xFF182033),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          segment.siteName,
+                          style: TextStyle(
+                            color: isActive
+                                ? Colors.white.withValues(alpha: 0.86)
+                                : const Color(0xFF6F7992),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FloorOption {
+  const _FloorOption({
+    required this.site,
+    required this.building,
+    required this.floor,
+  });
+
+  final SiteHierarchy site;
+  final BuildingHierarchy building;
+  final FloorHierarchy floor;
 }

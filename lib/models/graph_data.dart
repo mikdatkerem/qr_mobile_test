@@ -1,27 +1,58 @@
-enum NodeType { qr, park }
+enum NodeType { qr, park, entrance, exit, other }
 
 class MapNode {
-  final String id, label;
-  final double x, y;
-  final NodeType type;
-
   const MapNode({
     required this.id,
     required this.label,
     required this.x,
     required this.y,
     required this.type,
+    this.externalReferenceId,
   });
 
-  factory MapNode.fromJson(Map<String, dynamic> json) {
+  final String id;
+  final String label;
+  final double x;
+  final double y;
+  final NodeType type;
+  final String? externalReferenceId;
+
+  factory MapNode.fromLegacyJson(Map<String, dynamic> json) {
     final nodeTypeInt = json['nodeType'] as int? ?? 1;
-    final nodeType = nodeTypeInt == 2 ? NodeType.park : NodeType.qr;
+    final type = switch (nodeTypeInt) {
+      2 => NodeType.park,
+      _ => NodeType.qr,
+    };
+
+    final id = (json['id'] as String).toUpperCase();
     return MapNode(
-      id: (json['id'] as String).toUpperCase(),
-      label: json['id'] as String,
+      id: id,
+      label: json['label'] as String? ?? id,
       x: (json['x'] as num).toDouble(),
       y: (json['y'] as num).toDouble(),
-      type: nodeType,
+      type: type,
+      externalReferenceId: id,
+    );
+  }
+
+  factory MapNode.fromFacilityJson(Map<String, dynamic> json) {
+    final nodeTypeInt = json['nodeType'] as int? ?? 1;
+    final type = switch (nodeTypeInt) {
+      2 => NodeType.qr,
+      3 => NodeType.entrance,
+      4 => NodeType.exit,
+      8 => NodeType.park,
+      _ => NodeType.other,
+    };
+
+    final code = (json['code'] as String?) ?? (json['id']?.toString() ?? '');
+    return MapNode(
+      id: code.toUpperCase(),
+      label: (json['label'] as String?) ?? code,
+      x: (json['pixelX'] as num).toDouble(),
+      y: (json['pixelY'] as num).toDouble(),
+      type: type,
+      externalReferenceId: json['externalReferenceId'] as String?,
     );
   }
 
@@ -29,212 +60,124 @@ class MapNode {
   bool get isQr => type == NodeType.qr;
 }
 
-/// Park node'unun edge listesinden bağlı QR node'unu bulur
-MapNode? nearestQrForPark(String parkId) {
-  final edge = allEdges.where((e) => e.from == parkId).firstOrNull;
-  if (edge == null) return null;
-  return allNodes.where((n) => n.id == edge.to && n.isQr).firstOrNull;
-}
-
 class MapEdge {
-  final String from, to;
   const MapEdge({required this.from, required this.to});
+
+  final String from;
+  final String to;
 }
 
-const List<MapNode> allNodes = [
-  // ── QR Node'ları (31 adet: START + P1-P29 + END) ──
-  MapNode(
-      id: "START", label: "Başlangıç", x: 600.0, y: 950.0, type: NodeType.qr),
-  MapNode(id: "P1", label: "İç Konum 1", x: 600.0, y: 900.0, type: NodeType.qr),
-  MapNode(id: "P2", label: "İç Konum 2", x: 600.0, y: 820.0, type: NodeType.qr),
-  MapNode(id: "P3", label: "İç Konum 3", x: 600.0, y: 750.0, type: NodeType.qr),
-  MapNode(id: "P4", label: "İç Konum 4", x: 600.0, y: 690.0, type: NodeType.qr),
-  MapNode(id: "P5", label: "İç Konum 5", x: 600.0, y: 630.0, type: NodeType.qr),
-  MapNode(id: "P6", label: "İç Konum 6", x: 600.0, y: 570.0, type: NodeType.qr),
-  MapNode(id: "P7", label: "İç Konum 7", x: 600.0, y: 490.0, type: NodeType.qr),
-  MapNode(id: "P8", label: "İç Konum 8", x: 600.0, y: 430.0, type: NodeType.qr),
-  MapNode(id: "P9", label: "İç Konum 9", x: 600.0, y: 360.0, type: NodeType.qr),
-  MapNode(
-      id: "P10", label: "İç Konum 10", x: 600.0, y: 300.0, type: NodeType.qr),
-  MapNode(
-      id: "P11", label: "İç Konum 11", x: 600.0, y: 230.0, type: NodeType.qr),
-  MapNode(
-      id: "P12", label: "İç Konum 12", x: 600.0, y: 160.0, type: NodeType.qr),
-  MapNode(
-      id: "P13", label: "İç Konum 13", x: 600.0, y: 100.0, type: NodeType.qr),
-  MapNode(
-      id: "P14", label: "İç Konum 14", x: 495.0, y: 80.0, type: NodeType.qr),
-  MapNode(
-      id: "P15", label: "İç Konum 15", x: 435.0, y: 80.0, type: NodeType.qr),
-  MapNode(
-      id: "P16", label: "İç Konum 16", x: 395.0, y: 80.0, type: NodeType.qr),
-  MapNode(
-      id: "P17", label: "İç Konum 17", x: 345.0, y: 80.0, type: NodeType.qr),
-  MapNode(
-      id: "P18", label: "İç Konum 18", x: 226.0, y: 100.0, type: NodeType.qr),
-  MapNode(
-      id: "P19", label: "İç Konum 19", x: 226.0, y: 160.0, type: NodeType.qr),
-  MapNode(
-      id: "P20", label: "İç Konum 20", x: 226.0, y: 230.0, type: NodeType.qr),
-  MapNode(
-      id: "P21", label: "İç Konum 21", x: 226.0, y: 300.0, type: NodeType.qr),
-  MapNode(
-      id: "P22", label: "İç Konum 22", x: 226.0, y: 360.0, type: NodeType.qr),
-  MapNode(
-      id: "P23", label: "İç Konum 23", x: 226.0, y: 430.0, type: NodeType.qr),
-  MapNode(
-      id: "P24", label: "İç Konum 24", x: 226.0, y: 490.0, type: NodeType.qr),
-  MapNode(
-      id: "P25", label: "İç Konum 25", x: 226.0, y: 570.0, type: NodeType.qr),
-  MapNode(
-      id: "P26", label: "İç Konum 26", x: 226.0, y: 630.0, type: NodeType.qr),
-  MapNode(
-      id: "P27", label: "İç Konum 27", x: 226.0, y: 690.0, type: NodeType.qr),
-  MapNode(
-      id: "P28", label: "İç Konum 28", x: 226.0, y: 750.0, type: NodeType.qr),
-  MapNode(
-      id: "P29", label: "İç Konum 29", x: 226.0, y: 820.0, type: NodeType.qr),
-  MapNode(
-      id: "P30", label: "İç Konum 30", x: 226.0, y: 900.0, type: NodeType.qr),
-  MapNode(id: "END", label: "Bitiş", x: 226.0, y: 950.0, type: NodeType.qr),
-  // ── Park Node'ları (50 adet: A1-A50) ──
-  MapNode(id: "A1", label: "Park 1", x: 700.0, y: 900.0, type: NodeType.park),
-  MapNode(id: "A2", label: "Park 2", x: 700.0, y: 820.0, type: NodeType.park),
-  MapNode(id: "A3", label: "Park 3", x: 700.0, y: 750.0, type: NodeType.park),
-  MapNode(id: "A4", label: "Park 4", x: 700.0, y: 690.0, type: NodeType.park),
-  MapNode(id: "A5", label: "Park 5", x: 700.0, y: 630.0, type: NodeType.park),
-  MapNode(id: "A6", label: "Park 6", x: 700.0, y: 570.0, type: NodeType.park),
-  MapNode(id: "A7", label: "Park 7", x: 700.0, y: 490.0, type: NodeType.park),
-  MapNode(id: "A8", label: "Park 8", x: 700.0, y: 430.0, type: NodeType.park),
-  MapNode(id: "A9", label: "Park 9", x: 700.0, y: 360.0, type: NodeType.park),
-  MapNode(id: "A10", label: "Park 10", x: 700.0, y: 300.0, type: NodeType.park),
-  MapNode(id: "A11", label: "Park 11", x: 700.0, y: 230.0, type: NodeType.park),
-  MapNode(id: "A12", label: "Park 12", x: 700.0, y: 160.0, type: NodeType.park),
-  MapNode(id: "A13", label: "Park 13", x: 700.0, y: 100.0, type: NodeType.park),
-  MapNode(id: "A14", label: "Park 14", x: 450.0, y: 160.0, type: NodeType.park),
-  MapNode(id: "A15", label: "Park 15", x: 450.0, y: 230.0, type: NodeType.park),
-  MapNode(id: "A16", label: "Park 16", x: 450.0, y: 300.0, type: NodeType.park),
-  MapNode(id: "A17", label: "Park 17", x: 450.0, y: 360.0, type: NodeType.park),
-  MapNode(id: "A18", label: "Park 18", x: 450.0, y: 430.0, type: NodeType.park),
-  MapNode(id: "A19", label: "Park 19", x: 450.0, y: 490.0, type: NodeType.park),
-  MapNode(id: "A20", label: "Park 20", x: 450.0, y: 570.0, type: NodeType.park),
-  MapNode(id: "A21", label: "Park 21", x: 450.0, y: 630.0, type: NodeType.park),
-  MapNode(id: "A22", label: "Park 22", x: 450.0, y: 690.0, type: NodeType.park),
-  MapNode(id: "A23", label: "Park 23", x: 450.0, y: 750.0, type: NodeType.park),
-  MapNode(id: "A24", label: "Park 24", x: 450.0, y: 820.0, type: NodeType.park),
-  MapNode(id: "A25", label: "Park 25", x: 450.0, y: 900.0, type: NodeType.park),
-  MapNode(id: "A26", label: "Park 26", x: 130.0, y: 100.0, type: NodeType.park),
-  MapNode(id: "A27", label: "Park 27", x: 130.0, y: 160.0, type: NodeType.park),
-  MapNode(id: "A28", label: "Park 28", x: 130.0, y: 230.0, type: NodeType.park),
-  MapNode(id: "A29", label: "Park 29", x: 130.0, y: 300.0, type: NodeType.park),
-  MapNode(id: "A30", label: "Park 30", x: 130.0, y: 360.0, type: NodeType.park),
-  MapNode(id: "A31", label: "Park 31", x: 130.0, y: 430.0, type: NodeType.park),
-  MapNode(id: "A32", label: "Park 32", x: 130.0, y: 490.0, type: NodeType.park),
-  MapNode(id: "A33", label: "Park 33", x: 130.0, y: 570.0, type: NodeType.park),
-  MapNode(id: "A34", label: "Park 34", x: 130.0, y: 630.0, type: NodeType.park),
-  MapNode(id: "A35", label: "Park 35", x: 130.0, y: 690.0, type: NodeType.park),
-  MapNode(id: "A36", label: "Park 36", x: 130.0, y: 750.0, type: NodeType.park),
-  MapNode(id: "A37", label: "Park 37", x: 130.0, y: 820.0, type: NodeType.park),
-  MapNode(id: "A38", label: "Park 38", x: 130.0, y: 900.0, type: NodeType.park),
-  MapNode(id: "A39", label: "Park 39", x: 340.0, y: 160.0, type: NodeType.park),
-  MapNode(id: "A40", label: "Park 40", x: 340.0, y: 230.0, type: NodeType.park),
-  MapNode(id: "A41", label: "Park 41", x: 340.0, y: 300.0, type: NodeType.park),
-  MapNode(id: "A42", label: "Park 42", x: 340.0, y: 360.0, type: NodeType.park),
-  MapNode(id: "A43", label: "Park 43", x: 340.0, y: 430.0, type: NodeType.park),
-  MapNode(id: "A44", label: "Park 44", x: 340.0, y: 490.0, type: NodeType.park),
-  MapNode(id: "A45", label: "Park 45", x: 340.0, y: 570.0, type: NodeType.park),
-  MapNode(id: "A46", label: "Park 46", x: 340.0, y: 630.0, type: NodeType.park),
-  MapNode(id: "A47", label: "Park 47", x: 340.0, y: 690.0, type: NodeType.park),
-  MapNode(id: "A48", label: "Park 48", x: 340.0, y: 750.0, type: NodeType.park),
-  MapNode(id: "A49", label: "Park 49", x: 340.0, y: 820.0, type: NodeType.park),
-  MapNode(id: "A50", label: "Park 50", x: 340.0, y: 900.0, type: NodeType.park),
+String? currentMapAssetPath;
+String? currentMapAssetContentType;
+int currentMapWidth = 800;
+int currentMapHeight = 1000;
+
+final List<MapNode> allNodes = List<MapNode>.from(_sampleNodes);
+final List<MapEdge> allEdges = List<MapEdge>.from(_sampleEdges);
+
+void replaceGraph({
+  required Iterable<MapNode> nodes,
+  required Iterable<MapEdge> edges,
+  String? mapAssetPath,
+  String? mapAssetContentType,
+  int? mapWidth,
+  int? mapHeight,
+}) {
+  allNodes
+    ..clear()
+    ..addAll(nodes);
+
+  allEdges
+    ..clear()
+    ..addAll(edges);
+
+  currentMapAssetPath = mapAssetPath;
+  currentMapAssetContentType = mapAssetContentType;
+  currentMapWidth = mapWidth ?? currentMapWidth;
+  currentMapHeight = mapHeight ?? currentMapHeight;
+}
+
+MapNode? nearestQrForPark(String parkId) {
+  final edge = allEdges.where((item) => item.from == parkId).firstOrNull;
+  if (edge == null) {
+    return null;
+  }
+  return allNodes.where((node) => node.id == edge.to && node.isQr).firstOrNull;
+}
+
+const List<MapNode> _sampleNodes = [
+  MapNode(id: 'START', label: 'Baslangic', x: 600, y: 950, type: NodeType.qr, externalReferenceId: 'START'),
+  MapNode(id: 'P1', label: 'Ic Konum 1', x: 600, y: 900, type: NodeType.qr, externalReferenceId: 'P1'),
+  MapNode(id: 'P2', label: 'Ic Konum 2', x: 600, y: 820, type: NodeType.qr, externalReferenceId: 'P2'),
+  MapNode(id: 'P3', label: 'Ic Konum 3', x: 600, y: 750, type: NodeType.qr, externalReferenceId: 'P3'),
+  MapNode(id: 'P4', label: 'Ic Konum 4', x: 600, y: 690, type: NodeType.qr, externalReferenceId: 'P4'),
+  MapNode(id: 'P5', label: 'Ic Konum 5', x: 600, y: 630, type: NodeType.qr, externalReferenceId: 'P5'),
+  MapNode(id: 'P6', label: 'Ic Konum 6', x: 600, y: 570, type: NodeType.qr, externalReferenceId: 'P6'),
+  MapNode(id: 'P7', label: 'Ic Konum 7', x: 600, y: 490, type: NodeType.qr, externalReferenceId: 'P7'),
+  MapNode(id: 'P8', label: 'Ic Konum 8', x: 600, y: 430, type: NodeType.qr, externalReferenceId: 'P8'),
+  MapNode(id: 'P9', label: 'Ic Konum 9', x: 600, y: 360, type: NodeType.qr, externalReferenceId: 'P9'),
+  MapNode(id: 'P10', label: 'Ic Konum 10', x: 600, y: 300, type: NodeType.qr, externalReferenceId: 'P10'),
+  MapNode(id: 'P11', label: 'Ic Konum 11', x: 600, y: 230, type: NodeType.qr, externalReferenceId: 'P11'),
+  MapNode(id: 'P12', label: 'Ic Konum 12', x: 600, y: 160, type: NodeType.qr, externalReferenceId: 'P12'),
+  MapNode(id: 'P13', label: 'Ic Konum 13', x: 600, y: 100, type: NodeType.qr, externalReferenceId: 'P13'),
+  MapNode(id: 'P14', label: 'Ic Konum 14', x: 495, y: 80, type: NodeType.qr, externalReferenceId: 'P14'),
+  MapNode(id: 'P15', label: 'Ic Konum 15', x: 435, y: 80, type: NodeType.qr, externalReferenceId: 'P15'),
+  MapNode(id: 'P16', label: 'Ic Konum 16', x: 395, y: 80, type: NodeType.qr, externalReferenceId: 'P16'),
+  MapNode(id: 'P17', label: 'Ic Konum 17', x: 345, y: 80, type: NodeType.qr, externalReferenceId: 'P17'),
+  MapNode(id: 'P18', label: 'Ic Konum 18', x: 226, y: 100, type: NodeType.qr, externalReferenceId: 'P18'),
+  MapNode(id: 'P19', label: 'Ic Konum 19', x: 226, y: 160, type: NodeType.qr, externalReferenceId: 'P19'),
+  MapNode(id: 'P20', label: 'Ic Konum 20', x: 226, y: 230, type: NodeType.qr, externalReferenceId: 'P20'),
+  MapNode(id: 'P21', label: 'Ic Konum 21', x: 226, y: 300, type: NodeType.qr, externalReferenceId: 'P21'),
+  MapNode(id: 'P22', label: 'Ic Konum 22', x: 226, y: 360, type: NodeType.qr, externalReferenceId: 'P22'),
+  MapNode(id: 'P23', label: 'Ic Konum 23', x: 226, y: 430, type: NodeType.qr, externalReferenceId: 'P23'),
+  MapNode(id: 'P24', label: 'Ic Konum 24', x: 226, y: 490, type: NodeType.qr, externalReferenceId: 'P24'),
+  MapNode(id: 'P25', label: 'Ic Konum 25', x: 226, y: 570, type: NodeType.qr, externalReferenceId: 'P25'),
+  MapNode(id: 'P26', label: 'Ic Konum 26', x: 226, y: 630, type: NodeType.qr, externalReferenceId: 'P26'),
+  MapNode(id: 'P27', label: 'Ic Konum 27', x: 226, y: 690, type: NodeType.qr, externalReferenceId: 'P27'),
+  MapNode(id: 'P28', label: 'Ic Konum 28', x: 226, y: 750, type: NodeType.qr, externalReferenceId: 'P28'),
+  MapNode(id: 'P29', label: 'Ic Konum 29', x: 226, y: 820, type: NodeType.qr, externalReferenceId: 'P29'),
+  MapNode(id: 'P30', label: 'Ic Konum 30', x: 226, y: 900, type: NodeType.qr, externalReferenceId: 'P30'),
+  MapNode(id: 'END', label: 'Bitis', x: 226, y: 950, type: NodeType.exit, externalReferenceId: 'END'),
+  MapNode(id: 'A1', label: 'Park 1', x: 700, y: 900, type: NodeType.park, externalReferenceId: 'A1'),
+  MapNode(id: 'A2', label: 'Park 2', x: 700, y: 820, type: NodeType.park, externalReferenceId: 'A2'),
+  MapNode(id: 'A3', label: 'Park 3', x: 700, y: 750, type: NodeType.park, externalReferenceId: 'A3'),
+  MapNode(id: 'A4', label: 'Park 4', x: 700, y: 690, type: NodeType.park, externalReferenceId: 'A4'),
+  MapNode(id: 'A5', label: 'Park 5', x: 700, y: 630, type: NodeType.park, externalReferenceId: 'A5'),
+  MapNode(id: 'A6', label: 'Park 6', x: 700, y: 570, type: NodeType.park, externalReferenceId: 'A6'),
+  MapNode(id: 'A7', label: 'Park 7', x: 700, y: 490, type: NodeType.park, externalReferenceId: 'A7'),
+  MapNode(id: 'A8', label: 'Park 8', x: 700, y: 430, type: NodeType.park, externalReferenceId: 'A8'),
+  MapNode(id: 'A9', label: 'Park 9', x: 700, y: 360, type: NodeType.park, externalReferenceId: 'A9'),
+  MapNode(id: 'A10', label: 'Park 10', x: 700, y: 300, type: NodeType.park, externalReferenceId: 'A10'),
+  MapNode(id: 'A11', label: 'Park 11', x: 700, y: 230, type: NodeType.park, externalReferenceId: 'A11'),
+  MapNode(id: 'A12', label: 'Park 12', x: 700, y: 160, type: NodeType.park, externalReferenceId: 'A12'),
+  MapNode(id: 'A13', label: 'Park 13', x: 700, y: 100, type: NodeType.park, externalReferenceId: 'A13'),
 ];
 
-const List<MapEdge> allEdges = [
-  // QR zinciri — START sadece P1'e, END sadece P29'a bağlı
-  MapEdge(from: "START", to: "P1"),
-  MapEdge(from: "P1", to: "P2"),
-  MapEdge(from: "P2", to: "P3"),
-  MapEdge(from: "P3", to: "P4"),
-  MapEdge(from: "P4", to: "P5"),
-  MapEdge(from: "P5", to: "P6"),
-  MapEdge(from: "P6", to: "P7"),
-  MapEdge(from: "P7", to: "P8"),
-  MapEdge(from: "P8", to: "P9"),
-  MapEdge(from: "P9", to: "P10"),
-  MapEdge(from: "P10", to: "P11"),
-  MapEdge(from: "P11", to: "P12"),
-  MapEdge(from: "P12", to: "P13"),
-  MapEdge(from: "P13", to: "P14"),
-  MapEdge(from: "P14", to: "P15"),
-  MapEdge(from: "P15", to: "P16"),
-  MapEdge(from: "P16", to: "P17"),
-  MapEdge(from: "P17", to: "P18"),
-  MapEdge(from: "P18", to: "P19"),
-  MapEdge(from: "P19", to: "P20"),
-  MapEdge(from: "P20", to: "P21"),
-  MapEdge(from: "P21", to: "P22"),
-  MapEdge(from: "P22", to: "P23"),
-  MapEdge(from: "P23", to: "P24"),
-  MapEdge(from: "P24", to: "P25"),
-  MapEdge(from: "P25", to: "P26"),
-  MapEdge(from: "P26", to: "P27"),
-  MapEdge(from: "P27", to: "P28"),
-  MapEdge(from: "P28", to: "P29"),
-  MapEdge(from: "P29", to: "P30"),
-  MapEdge(from: "P30", to: "END"),
-  // Park ↔ QR köprüleri — sağ sütun (A1-A13)
-  MapEdge(from: "A1", to: "P1"),
-  MapEdge(from: "A2", to: "P2"),
-  MapEdge(from: "A3", to: "P3"),
-  MapEdge(from: "A4", to: "P4"),
-  MapEdge(from: "A5", to: "P5"),
-  MapEdge(from: "A6", to: "P6"),
-  MapEdge(from: "A7", to: "P7"),
-  MapEdge(from: "A8", to: "P8"),
-  MapEdge(from: "A9", to: "P9"),
-  MapEdge(from: "A10", to: "P10"),
-  MapEdge(from: "A11", to: "P11"),
-  MapEdge(from: "A12", to: "P12"),
-  MapEdge(from: "A13", to: "P13"),
-  // Orta sağ (A14-A25)
-  MapEdge(from: "A14", to: "P12"),
-  MapEdge(from: "A15", to: "P11"),
-  MapEdge(from: "A16", to: "P10"),
-  MapEdge(from: "A17", to: "P9"),
-  MapEdge(from: "A18", to: "P8"),
-  MapEdge(from: "A19", to: "P7"),
-  MapEdge(from: "A20", to: "P6"),
-  MapEdge(from: "A21", to: "P5"),
-  MapEdge(from: "A22", to: "P4"),
-  MapEdge(from: "A23", to: "P3"),
-  MapEdge(from: "A24", to: "P2"),
-  MapEdge(from: "A25", to: "P1"),
-  // Sol sütun (A26-A38)
-  MapEdge(from: "A26", to: "P18"),
-  MapEdge(from: "A27", to: "P19"),
-  MapEdge(from: "A28", to: "P20"),
-  MapEdge(from: "A29", to: "P21"),
-  MapEdge(from: "A30", to: "P22"),
-  MapEdge(from: "A31", to: "P23"),
-  MapEdge(from: "A32", to: "P24"),
-  MapEdge(from: "A33", to: "P25"),
-  MapEdge(from: "A34", to: "P26"),
-  MapEdge(from: "A35", to: "P27"),
-  MapEdge(from: "A36", to: "P28"),
-  MapEdge(from: "A37", to: "P29"),
-  MapEdge(from: "A38", to: "P30"),
-  // Orta sol (A39-A50)
-  MapEdge(from: "A39", to: "P19"),
-  MapEdge(from: "A40", to: "P20"),
-  MapEdge(from: "A41", to: "P21"),
-  MapEdge(from: "A42", to: "P22"),
-  MapEdge(from: "A43", to: "P23"),
-  MapEdge(from: "A44", to: "P24"),
-  MapEdge(from: "A45", to: "P25"),
-  MapEdge(from: "A46", to: "P26"),
-  MapEdge(from: "A47", to: "P27"),
-  MapEdge(from: "A48", to: "P28"),
-  MapEdge(from: "A49", to: "P29"),
-  MapEdge(from: "A50", to: "P30"),
+const List<MapEdge> _sampleEdges = [
+  MapEdge(from: 'START', to: 'P1'),
+  MapEdge(from: 'P1', to: 'P2'),
+  MapEdge(from: 'P2', to: 'P3'),
+  MapEdge(from: 'P3', to: 'P4'),
+  MapEdge(from: 'P4', to: 'P5'),
+  MapEdge(from: 'P5', to: 'P6'),
+  MapEdge(from: 'P6', to: 'P7'),
+  MapEdge(from: 'P7', to: 'P8'),
+  MapEdge(from: 'P8', to: 'P9'),
+  MapEdge(from: 'P9', to: 'P10'),
+  MapEdge(from: 'P10', to: 'P11'),
+  MapEdge(from: 'P11', to: 'P12'),
+  MapEdge(from: 'P12', to: 'P13'),
+  MapEdge(from: 'A1', to: 'P1'),
+  MapEdge(from: 'A2', to: 'P2'),
+  MapEdge(from: 'A3', to: 'P3'),
+  MapEdge(from: 'A4', to: 'P4'),
+  MapEdge(from: 'A5', to: 'P5'),
+  MapEdge(from: 'A6', to: 'P6'),
+  MapEdge(from: 'A7', to: 'P7'),
+  MapEdge(from: 'A8', to: 'P8'),
+  MapEdge(from: 'A9', to: 'P9'),
+  MapEdge(from: 'A10', to: 'P10'),
+  MapEdge(from: 'A11', to: 'P11'),
+  MapEdge(from: 'A12', to: 'P12'),
+  MapEdge(from: 'A13', to: 'P13'),
 ];

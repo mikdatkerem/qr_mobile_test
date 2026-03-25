@@ -1,58 +1,142 @@
 import 'dart:math';
-import 'package:dio/dio.dart';
-import '../core/api_client.dart';
-import '../models/graph_data.dart';
-import '../models/exceptions.dart';
 
-// Hastane kapısı — P16 sabit
-const String kHospitalNodeId = 'P16';
+import 'package:dio/dio.dart';
+
+import '../core/api_client.dart';
+import '../models/exceptions.dart';
+import '../models/graph_data.dart';
 
 class PathfindingService {
-  final Dio _dio;
-
   PathfindingService({Dio? dio}) : _dio = dio ?? ApiClient.instance;
 
-  /// GET /api/navigation/route?from=P5&to=A12
-  Future<RouteResult?> findPathFromApi(String fromId, String toId) async {
+  final Dio _dio;
+
+  Future<RouteResult?> findFacilityRoute({
+    required String floorId,
+    required String fromReferenceId,
+    required String toReferenceId,
+    bool accessibleOnly = false,
+  }) async {
     try {
       final response = await _dio.get<Map<String, dynamic>>(
-        '/navigation/route',
-        queryParameters: {'from': fromId, 'to': toId},
+        '/navigation/facility-route',
+        queryParameters: {
+          'floorId': floorId,
+          'fromReferenceId': fromReferenceId,
+          'toReferenceId': toReferenceId,
+          'accessibleOnly': accessibleOnly,
+        },
       );
-      return RouteResult.fromJson(response.data!);
-    } on DioException catch (e) {
-      if (e.response?.statusCode == 404) return null;
-      if (e.response?.statusCode == 401)
-        throw const ApiException('Kimlik doğrulama hatası');
-      throw ApiException(e.message ?? 'Rota hesaplanamadı');
+      return RouteResult.fromFacilityJson(response.data!);
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        return null;
+      }
+      if (error.response?.statusCode == 401) {
+        throw const ApiException('Kimlik dogrulama hatasi');
+      }
+      final detail = error.response?.data is Map<String, dynamic>
+          ? (error.response!.data['detail']?.toString())
+          : null;
+      throw ApiException(detail ?? error.message ?? 'Rota hesaplanamadi');
     }
   }
 
-  // ── Park önerisi algoritmaları ─────────────────────────────────────────────
+  Future<MultiRouteResult?> findFacilityMultiRoute({
+    required String fromReferenceId,
+    required String toReferenceId,
+    bool accessibleOnly = false,
+  }) async {
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/navigation/facility-multi-route',
+        queryParameters: {
+          'fromReferenceId': fromReferenceId,
+          'toReferenceId': toReferenceId,
+          'accessibleOnly': accessibleOnly,
+        },
+      );
+      return MultiRouteResult.fromJson(response.data!);
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        return null;
+      }
+      if (error.response?.statusCode == 401) {
+        throw const ApiException('Kimlik dogrulama hatasi');
+      }
+      final detail = error.response?.data is Map<String, dynamic>
+          ? (error.response!.data['detail']?.toString())
+          : null;
+      throw ApiException(detail ?? error.message ?? 'Cok katli rota hesaplanamadi');
+    }
+  }
 
-  /// Kullanıcının bulunduğu node'a Öklid mesafesi en yakın boş park
-  MapNode? nearestEmptyParkToUser(
-      String fromNodeId, Map<String, bool> occupancyMap) {
-    final from = allNodes.where((n) => n.id == fromNodeId).firstOrNull;
-    if (from == null) return null;
+  Future<MultiRouteResult?> findBestExitRoute({
+    required String fromReferenceId,
+    bool accessibleOnly = false,
+  }) async {
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/navigation/facility-best-exit-route',
+        queryParameters: {
+          'fromReferenceId': fromReferenceId,
+          'accessibleOnly': accessibleOnly,
+        },
+      );
+      return MultiRouteResult.fromJson(response.data!);
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        return null;
+      }
+      final detail = error.response?.data is Map<String, dynamic>
+          ? (error.response!.data['detail']?.toString())
+          : null;
+      throw ApiException(detail ?? error.message ?? 'Cikis rotasi hesaplanamadi');
+    }
+  }
+
+  Future<RecommendedRouteResult?> findRecommendedParkingNearEntrance({
+    required String fromReferenceId,
+    bool accessibleOnly = false,
+  }) async {
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/navigation/facility-recommended-parking-near-entrance',
+        queryParameters: {
+          'fromReferenceId': fromReferenceId,
+          'accessibleOnly': accessibleOnly,
+        },
+      );
+      return RecommendedRouteResult.fromJson(response.data!);
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        return null;
+      }
+      final detail = error.response?.data is Map<String, dynamic>
+          ? (error.response!.data['detail']?.toString())
+          : null;
+      throw ApiException(detail ?? error.message ?? 'Giris yakin park onerisi alinamadi');
+    }
+  }
+
+  MapNode? nearestEmptyParkToUser(String fromNodeId, Map<String, bool> occupancyMap) {
+    final from = allNodes.where((node) => node.id == fromNodeId).firstOrNull;
+    if (from == null) {
+      return null;
+    }
     return _nearestEmptyPark(from, occupancyMap);
   }
 
-  /// P16 (hastane girişi) node'una Öklid mesafesi en yakın boş park
-  MapNode? nearestEmptyParkToHospital(Map<String, bool> occupancyMap) {
-    final hospital = allNodes.where((n) => n.id == kHospitalNodeId).firstOrNull;
-    if (hospital == null) return null;
-    return _nearestEmptyPark(hospital, occupancyMap);
-  }
-
-  /// Verilen referans node'a en yakın boş park — Öklid mesafesi
   MapNode? _nearestEmptyPark(MapNode from, Map<String, bool> occupancyMap) {
     final emptyParks =
-        allNodes.where((n) => n.isPark && occupancyMap[n.id] == false).toList();
-    if (emptyParks.isEmpty) return null;
+        allNodes.where((node) => node.isPark && occupancyMap[node.id] == false).toList();
+    if (emptyParks.isEmpty) {
+      return null;
+    }
 
-    emptyParks
-        .sort((a, b) => _euclidean(from, a).compareTo(_euclidean(from, b)));
+    emptyParks.sort(
+      (left, right) => _euclidean(from, left).compareTo(_euclidean(from, right)),
+    );
 
     return emptyParks.first;
   }
@@ -61,36 +145,165 @@ class PathfindingService {
       sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
 
   Map<String, List<MapNode>> getParkGroups() {
-    final parks = allNodes.where((n) => n.isPark).toList()
-      ..sort((a, b) {
-        final na = int.tryParse(a.id.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-        final nb = int.tryParse(b.id.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-        return na.compareTo(nb);
+    final parks = allNodes.where((node) => node.isPark).toList()
+      ..sort((left, right) {
+        final leftNum = int.tryParse(left.id.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+        final rightNum = int.tryParse(right.id.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+        return leftNum.compareTo(rightNum);
       });
+
     return {'A': parks};
   }
 
   void dispose() {}
 }
 
-/// API'den dönen rota sonucu
 class RouteResult {
-  final List<MapNode> nodes;
-  final double distanceMeters;
-  final String distanceLabel;
-
   const RouteResult({
     required this.nodes,
     required this.distanceMeters,
     required this.distanceLabel,
+    this.mapAssetPath,
+    this.mapWidth,
+    this.mapHeight,
   });
 
-  factory RouteResult.fromJson(Map<String, dynamic> json) {
+  final List<MapNode> nodes;
+  final double distanceMeters;
+  final String distanceLabel;
+  final String? mapAssetPath;
+  final int? mapWidth;
+  final int? mapHeight;
+
+  factory RouteResult.fromFacilityJson(Map<String, dynamic> json) {
     final nodeList = (json['nodes'] as List<dynamic>)
-        .map((e) => MapNode.fromJson(e as Map<String, dynamic>))
+        .map((item) => MapNode.fromFacilityJson(item as Map<String, dynamic>))
         .toList();
+
     return RouteResult(
       nodes: nodeList,
+      distanceMeters: (json['distanceMeters'] as num).toDouble(),
+      distanceLabel: json['distanceLabel'] as String,
+      mapAssetPath: json['mapAssetPath'] as String?,
+      mapWidth: json['mapWidth'] as int?,
+      mapHeight: json['mapHeight'] as int?,
+    );
+  }
+}
+
+class MultiRouteSegment {
+  const MultiRouteSegment({
+    required this.mapVersionId,
+    required this.floorId,
+    required this.floorName,
+    required this.buildingId,
+    required this.buildingName,
+    required this.siteId,
+    required this.siteName,
+    required this.mapName,
+    required this.mapAssetPath,
+    required this.mapAssetContentType,
+    required this.mapWidth,
+    required this.mapHeight,
+    required this.nodes,
+  });
+
+  final String mapVersionId;
+  final String floorId;
+  final String floorName;
+  final String buildingId;
+  final String buildingName;
+  final String siteId;
+  final String siteName;
+  final String mapName;
+  final String mapAssetPath;
+  final String mapAssetContentType;
+  final int mapWidth;
+  final int mapHeight;
+  final List<MapNode> nodes;
+
+  factory MultiRouteSegment.fromJson(Map<String, dynamic> json) {
+    return MultiRouteSegment(
+      mapVersionId: json['mapVersionId'] as String,
+      floorId: json['floorId'] as String,
+      floorName: json['floorName'] as String,
+      buildingId: json['buildingId'] as String,
+      buildingName: json['buildingName'] as String,
+      siteId: json['siteId'] as String,
+      siteName: json['siteName'] as String,
+      mapName: json['mapName'] as String,
+      mapAssetPath: json['mapAssetPath'] as String,
+      mapAssetContentType: json['mapAssetContentType'] as String,
+      mapWidth: json['mapWidth'] as int,
+      mapHeight: json['mapHeight'] as int,
+      nodes: (json['nodes'] as List<dynamic>)
+          .map((item) => MapNode.fromFacilityJson(item as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+class MultiRouteResult {
+  const MultiRouteResult({
+    required this.segments,
+    required this.distanceMeters,
+    required this.distanceLabel,
+  });
+
+  final List<MultiRouteSegment> segments;
+  final double distanceMeters;
+  final String distanceLabel;
+
+  factory MultiRouteResult.fromJson(Map<String, dynamic> json) {
+    return MultiRouteResult(
+      segments: (json['segments'] as List<dynamic>)
+          .map((item) => MultiRouteSegment.fromJson(item as Map<String, dynamic>))
+          .toList(),
+      distanceMeters: (json['distanceMeters'] as num).toDouble(),
+      distanceLabel: json['distanceLabel'] as String,
+    );
+  }
+}
+
+class RecommendedRouteTarget {
+  const RecommendedRouteTarget({
+    required this.code,
+    required this.label,
+    required this.externalReferenceId,
+  });
+
+  final String code;
+  final String label;
+  final String? externalReferenceId;
+
+  factory RecommendedRouteTarget.fromJson(Map<String, dynamic> json) {
+    return RecommendedRouteTarget(
+      code: json['code'] as String,
+      label: json['label'] as String,
+      externalReferenceId: json['externalReferenceId'] as String?,
+    );
+  }
+}
+
+class RecommendedRouteResult {
+  const RecommendedRouteResult({
+    required this.target,
+    required this.segments,
+    required this.distanceMeters,
+    required this.distanceLabel,
+  });
+
+  final RecommendedRouteTarget target;
+  final List<MultiRouteSegment> segments;
+  final double distanceMeters;
+  final String distanceLabel;
+
+  factory RecommendedRouteResult.fromJson(Map<String, dynamic> json) {
+    return RecommendedRouteResult(
+      target: RecommendedRouteTarget.fromJson(json['target'] as Map<String, dynamic>),
+      segments: (json['segments'] as List<dynamic>)
+          .map((item) => MultiRouteSegment.fromJson(item as Map<String, dynamic>))
+          .toList(),
       distanceMeters: (json['distanceMeters'] as num).toDouble(),
       distanceLabel: json['distanceLabel'] as String,
     );

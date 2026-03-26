@@ -15,6 +15,10 @@ class FloorPlanWidget extends StatefulWidget {
     this.activeZoneId,
     this.navigationRoute,
     this.nodes,
+    this.mapAssetPath,
+    this.mapAssetContentType,
+    this.mapWidth,
+    this.mapHeight,
   });
 
   final Set<String> visitedIds;
@@ -22,6 +26,10 @@ class FloorPlanWidget extends StatefulWidget {
   final List<MapNode>? navigationRoute;
   final Map<String, bool> occupancyMap;
   final List<MapNode>? nodes;
+  final String? mapAssetPath;
+  final String? mapAssetContentType;
+  final int? mapWidth;
+  final int? mapHeight;
 
   String? get targetParkId {
     if (navigationRoute == null || navigationRoute!.isEmpty) {
@@ -39,6 +47,9 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
     with SingleTickerProviderStateMixin {
   late final AnimationController _glowController;
   late final Animation<double> _glowAnimation;
+  late final TransformationController _transformationController;
+  bool _hasUserMovedViewport = false;
+  Size? _viewportSize;
 
   @override
   void initState() {
@@ -51,12 +62,35 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
       parent: _glowController,
       curve: Curves.easeInOut,
     );
+    _transformationController = TransformationController();
   }
 
   @override
   void dispose() {
     _glowController.dispose();
+    _transformationController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant FloorPlanWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    final mapChanged =
+        oldWidget.mapAssetPath != widget.mapAssetPath ||
+        oldWidget.mapWidth != widget.mapWidth ||
+        oldWidget.mapHeight != widget.mapHeight;
+
+    if (mapChanged) {
+      _hasUserMovedViewport = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _centerOnActiveNode(force: true));
+      return;
+    }
+
+    if (!_hasUserMovedViewport &&
+        oldWidget.activeZoneId != widget.activeZoneId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _centerOnActiveNode(force: true));
+    }
   }
 
   MapNode? get _activeNode {
@@ -68,64 +102,115 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
     return sourceNodes.where((node) => node.id == activeZoneId).firstOrNull;
   }
 
+  double get _mapWidth => (widget.mapWidth ?? currentMapWidth).toDouble();
+  double get _mapHeight => (widget.mapHeight ?? currentMapHeight).toDouble();
+
+  void _centerOnActiveNode({bool force = false}) {
+    final viewportSize = _viewportSize;
+    final activeNode = _activeNode;
+    if (viewportSize == null || activeNode == null) {
+      return;
+    }
+
+    if (_hasUserMovedViewport && !force) {
+      return;
+    }
+
+    final childWidth = _mapWidth;
+    final childHeight = _mapHeight;
+
+    double translateX;
+    if (childWidth <= viewportSize.width) {
+      translateX = (viewportSize.width - childWidth) / 2;
+    } else {
+      final minTranslateX = viewportSize.width - childWidth;
+      translateX =
+          (viewportSize.width / 2 - activeNode.x).clamp(minTranslateX, 0.0);
+    }
+
+    double translateY;
+    if (childHeight <= viewportSize.height) {
+      translateY = (viewportSize.height - childHeight) / 2;
+    } else {
+      final minTranslateY = viewportSize.height - childHeight;
+      translateY =
+          (viewportSize.height / 2 - activeNode.y).clamp(minTranslateY, 0.0);
+    }
+
+    _transformationController.value =
+        Matrix4.identity()..translateByDouble(translateX, translateY, 0, 1);
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final height = constraints.maxHeight;
-        final scaleX = width / currentMapWidth;
-        final scaleY = height / currentMapHeight;
+        _viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
+        WidgetsBinding.instance.addPostFrameCallback((_) => _centerOnActiveNode());
         final activeNode = _activeNode;
         final sourceNodes = widget.nodes ?? allNodes;
         final parkNodes = sourceNodes.where((node) => node.isPark).toList();
 
-        return Stack(
-          clipBehavior: Clip.hardEdge,
-          children: [
-            Positioned.fill(
-              child: _MapAssetSurface(url: _resolveMapAssetUrl()),
-            ),
-            if (widget.navigationRoute != null &&
-                widget.navigationRoute!.length >= 2)
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: NavigationRoutePainter(
-                    routeNodes: widget.navigationRoute!,
-                    svgWidth: currentMapWidth.toDouble(),
-                    svgHeight: currentMapHeight.toDouble(),
-                    animation: _glowAnimation,
+        return InteractiveViewer(
+          transformationController: _transformationController,
+          constrained: false,
+          scaleEnabled: false,
+          boundaryMargin: const EdgeInsets.all(320),
+          onInteractionStart: (_) => _hasUserMovedViewport = true,
+          child: SizedBox(
+            width: _mapWidth,
+            height: _mapHeight,
+            child: Stack(
+              clipBehavior: Clip.hardEdge,
+              children: [
+                Positioned.fill(
+                  child: _MapAssetSurface(
+                    url: _resolveMapAssetUrl(),
+                    contentType: widget.mapAssetContentType,
                   ),
                 ),
-              ),
-            ...parkNodes.map((node) {
-              const cellWidth = 28.0;
-              const cellHeight = 18.0;
-              return Positioned(
-                left: node.x * scaleX - cellWidth / 2,
-                top: node.y * scaleY - cellHeight / 2,
-                child: _ParkCell(
-                  key: ValueKey(node.id),
-                  node: node,
-                  isOccupied: widget.occupancyMap[node.id],
-                  isTarget: widget.targetParkId == node.id,
-                ),
-              );
-            }),
-            if (activeNode != null)
-              Positioned(
-                left: (activeNode.x * scaleX - 20).clamp(0.0, width - 40),
-                top: (activeNode.y * scaleY - 20).clamp(0.0, height - 40),
-                child: const PulseMarker(),
-              ),
-          ],
+                if (widget.navigationRoute != null &&
+                    widget.navigationRoute!.length >= 2)
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: NavigationRoutePainter(
+                        routeNodes: widget.navigationRoute!,
+                        svgWidth: _mapWidth,
+                        svgHeight: _mapHeight,
+                        animation: _glowAnimation,
+                      ),
+                    ),
+                  ),
+                ...parkNodes.map((node) {
+                  const cellWidth = 36.0;
+                  const cellHeight = 22.0;
+                  return Positioned(
+                    left: node.x - cellWidth / 2,
+                    top: node.y - cellHeight / 2,
+                    child: _ParkCell(
+                      key: ValueKey(node.id),
+                      node: node,
+                      isOccupied: widget.occupancyMap[node.id],
+                      isTarget: widget.targetParkId == node.id,
+                    ),
+                  );
+                }),
+                if (activeNode != null)
+                  Positioned(
+                    left: activeNode.x - 20,
+                    top: activeNode.y - 20,
+                    child: const PulseMarker(),
+                  ),
+              ],
+            ),
+          ),
         );
       },
     );
   }
 
   String _resolveMapAssetUrl() {
-    final assetPath = currentMapAssetPath;
+    final assetPath = widget.mapAssetPath ?? currentMapAssetPath;
     if (assetPath == null || assetPath.isEmpty) {
       return AppConfig.mapSvgUrl;
     }
@@ -139,19 +224,21 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
 }
 
 class _MapAssetSurface extends StatelessWidget {
-  const _MapAssetSurface({required this.url});
+  const _MapAssetSurface({required this.url, this.contentType});
 
   final String url;
+  final String? contentType;
 
   @override
   Widget build(BuildContext context) {
     final headers = ApiClient.buildHeaders(includeJsonContentType: false);
-    final contentType = currentMapAssetContentType?.toLowerCase() ?? 'image/svg+xml';
+    final resolvedContentType =
+        contentType?.toLowerCase() ?? currentMapAssetContentType?.toLowerCase() ?? 'image/svg+xml';
 
-    if (contentType.contains('svg') || url.toLowerCase().endsWith('.svg')) {
+    if (resolvedContentType.contains('svg') || url.toLowerCase().endsWith('.svg')) {
       return SvgPicture.network(
         url,
-        fit: BoxFit.fill,
+        fit: BoxFit.cover,
         headers: headers,
         placeholderBuilder: (_) => const Center(
           child: CircularProgressIndicator(),
@@ -161,7 +248,7 @@ class _MapAssetSurface extends StatelessWidget {
 
     return Image.network(
       url,
-      fit: BoxFit.fill,
+      fit: BoxFit.cover,
       headers: headers,
       loadingBuilder: (context, child, progress) {
         if (progress == null) {
@@ -204,8 +291,8 @@ class _ParkCell extends StatelessWidget {
     final cellColor = _cellColor;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 280),
-      width: 28,
-      height: 18,
+      width: 36,
+      height: 22,
       decoration: BoxDecoration(
         color: cellColor,
         borderRadius: BorderRadius.circular(4),
@@ -222,7 +309,7 @@ class _ParkCell extends StatelessWidget {
           node.id.replaceAll(RegExp(r'[^0-9]'), ''),
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 7,
+            fontSize: 8,
             fontWeight: FontWeight.w700,
             height: 1,
           ),

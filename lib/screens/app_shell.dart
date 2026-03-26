@@ -26,7 +26,10 @@ class _AppShellState extends State<AppShell> {
         onQuickScan: _handleQuickScan,
         profile: widget.sessionController.profile,
       ),
-      MapsScreen(key: _mapsKey),
+      MapsScreen(
+        key: _mapsKey,
+        onBack: () => setState(() => _currentIndex = 0),
+      ),
       ProfileScreen(sessionController: widget.sessionController),
     ];
 
@@ -35,51 +38,53 @@ class _AppShellState extends State<AppShell> {
         index: _currentIndex,
         children: pages,
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-          child: Container(
-            height: 78,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x140C1730),
-                  blurRadius: 24,
-                  offset: Offset(0, 12),
+      bottomNavigationBar: _currentIndex == 1
+          ? null
+          : SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                child: Container(
+                  height: 78,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x140C1730),
+                        blurRadius: 24,
+                        offset: Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      _NavItem(
+                        icon: Icons.home_outlined,
+                        activeIcon: Icons.home_rounded,
+                        label: 'Ana Sayfa',
+                        selected: _currentIndex == 0,
+                        onTap: () => setState(() => _currentIndex = 0),
+                      ),
+                      _NavItem(
+                        icon: Icons.map_outlined,
+                        activeIcon: Icons.map_rounded,
+                        label: 'Haritalar',
+                        selected: _currentIndex == 1,
+                        onTap: () => setState(() => _currentIndex = 1),
+                      ),
+                      _NavItem(
+                        icon: Icons.person_outline_rounded,
+                        activeIcon: Icons.person_rounded,
+                        label: 'Profil',
+                        selected: _currentIndex == 2,
+                        onTap: () => setState(() => _currentIndex = 2),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
-            child: Row(
-              children: [
-                _NavItem(
-                  icon: Icons.home_outlined,
-                  activeIcon: Icons.home_rounded,
-                  label: 'Ana Sayfa',
-                  selected: _currentIndex == 0,
-                  onTap: () => setState(() => _currentIndex = 0),
-                ),
-                _NavItem(
-                  icon: Icons.map_outlined,
-                  activeIcon: Icons.map_rounded,
-                  label: 'Haritalar',
-                  selected: _currentIndex == 1,
-                  onTap: () => setState(() => _currentIndex = 1),
-                ),
-                _NavItem(
-                  icon: Icons.person_outline_rounded,
-                  activeIcon: Icons.person_rounded,
-                  label: 'Profil',
-                  selected: _currentIndex == 2,
-                  onTap: () => setState(() => _currentIndex = 2),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 

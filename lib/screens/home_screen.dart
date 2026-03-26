@@ -11,14 +11,14 @@ import '../services/parking_service.dart';
 import '../services/pathfinding_service.dart';
 import '../widgets/embedded_scanner.dart';
 import '../widgets/floor_plan_widget.dart';
-import '../widgets/nav_banner.dart';
 import '../widgets/park_bottom_sheet.dart';
 import '../widgets/park_confirm_dialog.dart';
-import '../widgets/park_selector_sheet.dart';
 import '../widgets/park_suggestion_dialog.dart';
 
 class MapsScreen extends StatefulWidget {
-  const MapsScreen({super.key});
+  const MapsScreen({super.key, required this.onBack});
+
+  final VoidCallback onBack;
 
   @override
   State<MapsScreen> createState() => MapsScreenState();
@@ -47,7 +47,6 @@ class MapsScreenState extends State<MapsScreen> {
   List<MapNode>? _route;
   MultiRouteResult? _multiRoute;
   int _activeRouteSegmentIndex = 0;
-  String? _distanceLabel;
   String? _lastScan;
   DateTime? _lastScanTime;
   Map<String, bool> _occupancy = {};
@@ -145,7 +144,6 @@ class MapsScreenState extends State<MapsScreen> {
       _route = null;
       _multiRoute = null;
       _activeRouteSegmentIndex = 0;
-      _distanceLabel = null;
       _lastScan = null;
     });
     await _loadOccupancy();
@@ -238,7 +236,6 @@ class MapsScreenState extends State<MapsScreen> {
           _activeRouteSegmentIndex = 0;
           _route = result.nodes;
           _displayNodes = _map?.nodes ?? allNodes;
-          _distanceLabel = result.distanceLabel;
           if (result.mapAssetPath != null) {
             currentMapAssetPath = result.mapAssetPath;
             currentMapWidth = result.mapWidth ?? currentMapWidth;
@@ -262,7 +259,6 @@ class MapsScreenState extends State<MapsScreen> {
       setState(() {
         _multiRoute = multiRoute;
         _activeRouteSegmentIndex = 0;
-        _distanceLabel = multiRoute.distanceLabel;
       });
 
       await _showRouteSegment(0);
@@ -333,7 +329,6 @@ class MapsScreenState extends State<MapsScreen> {
         _targetPark = null;
         _multiRoute = result;
         _activeRouteSegmentIndex = 0;
-        _distanceLabel = result.distanceLabel;
       });
 
       await _showRouteSegment(0);
@@ -376,37 +371,12 @@ class MapsScreenState extends State<MapsScreen> {
           distanceLabel: result.distanceLabel,
         );
         _activeRouteSegmentIndex = 0;
-        _distanceLabel = result.distanceLabel;
       });
 
       await _showRouteSegment(0);
     } catch (error) {
       _showError('Giris yakin park onerisi alinamadi: $error');
     }
-  }
-
-  void _showParkSelector() {
-    if (_lastScan == null) {
-      _showError('Once bir QR kodu okutun.');
-      return;
-    }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => ParkSelectorSheet(
-        pathfinder: _pathfinder,
-        occupancyMap: _occupancy,
-        onParkSelected: (park) {
-          setState(() {
-            _targetPark = park;
-            _route = null;
-            _multiRoute = null;
-          });
-          unawaited(_updateRoute(_lastScan!));
-        },
-      ),
-    );
   }
 
   void _showParkConfirmDialog(String spotId) {
@@ -427,7 +397,6 @@ class MapsScreenState extends State<MapsScreen> {
             _route = null;
             _multiRoute = null;
             _displayNodes = _map?.nodes ?? allNodes;
-            _distanceLabel = null;
           });
         },
         onDeny: () => Navigator.pop(context),
@@ -594,6 +563,18 @@ class MapsScreenState extends State<MapsScreen> {
       );
   }
 
+  void _collapseSheet() {
+    if (!_sheetController.isAttached) {
+      return;
+    }
+
+    _sheetController.animateTo(
+      ParkBottomSheet.peekSize,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final emptyCount = _occupancy.values.where((value) => value == false).length;
@@ -609,160 +590,75 @@ class MapsScreenState extends State<MapsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Stack(
               children: [
-                SafeArea(
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.qr_code_2_rounded, color: Color(0xFF2155D6)),
-                            const SizedBox(width: 10),
-                            const Text('Haritalar',
-                                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
-                            const Spacer(),
-                            TextButton.icon(
-                              onPressed: () => _showPicker<MapNode>(
-                                items: allNodes.where((node) => node.isQr).toList(),
-                                selected: null,
-                                title: (item) => item.label,
-                                subtitle: (item) => item.externalReferenceId ?? item.id,
-                                onSelected: (item) =>
-                                    openByQrReference(item.externalReferenceId ?? item.id),
-                              ),
-                              icon: const Icon(Icons.qr_code_rounded),
-                              label: const Text('Test QR'),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                        child: _ContextCard(
-                          organization: _hierarchy?.name ?? 'Organizasyon',
-                          site: _site?.name ?? 'Yerleske',
-                          building: _building?.name ?? 'Bina',
-                          floor: _floor?.name ?? 'Kat',
-                          onOrganizationTap: _showOrganizationPicker,
-                          onSiteTap: _showSitePicker,
-                          onBuildingTap: _showBuildingPicker,
-                          onFloorTap: _showFloorPicker,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: Column(
+                GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: _collapseSheet,
+                  child: SafeArea(
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 16, 0),
+                          child: Row(
                             children: [
-                              EmbeddedScanner(
-                                controller: _scannerController,
-                                onDetect: _onQrDetected,
-                                isLoading: _busy,
+                              IconButton(
+                                onPressed: widget.onBack,
+                                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: const Color(0xFF182033),
+                                ),
                               ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(child: _InfoChip(title: 'Aktif Nokta', value: _lastScan ?? 'QR bekleniyor', icon: Icons.pin_drop_outlined)),
-                                  const SizedBox(width: 10),
-                                  Expanded(child: _InfoChip(title: 'Bos Yer', value: '$emptyCount', icon: Icons.local_parking_outlined)),
-                                ],
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  '${_site?.name ?? 'Yerleşke'} / ${_building?.name ?? 'Bina'}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF182033),
+                                  ),
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                      if (_targetPark != null)
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                          child: NavBanner(
-                            targetPark: _targetPark!,
-                            distanceLabel: _distanceLabel,
-                            onClear: () => setState(() {
-                              _targetPark = null;
-                              _route = null;
-                              _distanceLabel = null;
-                            }),
-                            onTap: _showParkSelector,
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                          child: EmbeddedScanner(
+                            controller: _scannerController,
+                            onDetect: _onQrDetected,
+                            isLoading: _busy,
                           ),
                         ),
-                      if (_multiRoute != null && _multiRoute!.segments.length > 1)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                          child: _RouteSegmentsCard(
-                            result: _multiRoute!,
-                            activeIndex: _activeRouteSegmentIndex,
-                            onSegmentTap: (index) => unawaited(_showRouteSegment(index)),
-                          ),
-                        ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Container(
-                                padding: const EdgeInsets.all(18),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(22),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(_map?.name ?? 'Harita',
-                                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      '$emptyCount BOS / $fullCount DOLU / ${_occupancy.length} TOPLAM',
-                                      style: const TextStyle(color: Color(0xFF1BA46C), fontWeight: FontWeight.w700),
-                                    ),
-                                  ],
-                                ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(28),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            InkWell(
-                              onTap: _showParkSelector,
-                              borderRadius: BorderRadius.circular(18),
-                              child: Container(
-                                width: 62,
-                                height: 62,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
-                                child: const Icon(Icons.search_rounded, color: Color(0xFF6F7992)),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(26),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(26),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(28),
                               child: FloorPlanWidget(
                                 visitedIds: const {},
                                 activeZoneId: activeNodeId,
                                 navigationRoute: _route,
-                                occupancyMap: _occupancy,
-                                nodes: _displayNodes,
+                                  occupancyMap: _occupancy,
+                                  nodes: _displayNodes,
+                                  mapAssetPath: _map?.assetPath,
+                                  mapAssetContentType: _map?.assetContentType,
+                                  mapWidth: _map?.width,
+                                  mapHeight: _map?.height,
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 ParkBottomSheet(
@@ -770,8 +666,24 @@ class MapsScreenState extends State<MapsScreen> {
                   occupancyMap: _occupancy,
                   targetPark: _targetPark,
                   parkedAt: _parkedAt,
+                  organizationLabel: _hierarchy?.name ?? 'Organizasyon',
+                  siteLabel: _site?.name ?? 'Yerleşke',
+                  buildingLabel: _building?.name ?? 'Bina',
+                  floorLabel: _floor?.name ?? 'Kat',
+                  mapName: _map?.name ?? 'Harita',
+                  activeReference: _lastScan,
+                  emptyCount: emptyCount,
+                  fullCount: fullCount,
+                  totalCount: _occupancy.length,
+                  multiRoute: _multiRoute,
+                  activeSegmentIndex: _activeRouteSegmentIndex,
+                  onSegmentTap: (index) => unawaited(_showRouteSegment(index)),
+                  onOrganizationTap: _showOrganizationPicker,
+                  onSiteTap: _showSitePicker,
+                  onBuildingTap: _showBuildingPicker,
+                  onFloorTap: _showFloorPicker,
                   onParkSelected: (park) {
-                    _sheetController.animateTo(0.045,
+                    _sheetController.animateTo(ParkBottomSheet.peekSize,
                         duration: const Duration(milliseconds: 300),
                         curve: Curves.easeOutCubic);
                     setState(() {
@@ -794,7 +706,6 @@ class MapsScreenState extends State<MapsScreen> {
                     _route = null;
                     _multiRoute = null;
                     _displayNodes = _map?.nodes ?? allNodes;
-                    _distanceLabel = null;
                   }),
                   onNearestToUser: () {
                     if (_lastScan == null) return;
@@ -812,244 +723,6 @@ class MapsScreenState extends State<MapsScreen> {
                 ),
               ],
             ),
-    );
-  }
-}
-
-class _ContextCard extends StatelessWidget {
-  const _ContextCard({
-    required this.organization,
-    required this.site,
-    required this.building,
-    required this.floor,
-    required this.onOrganizationTap,
-    required this.onSiteTap,
-    required this.onBuildingTap,
-    required this.onFloorTap,
-  });
-
-  final String organization;
-  final String site;
-  final String building;
-  final String floor;
-  final VoidCallback onOrganizationTap;
-  final VoidCallback onSiteTap;
-  final VoidCallback onBuildingTap;
-  final VoidCallback onFloorTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          _SelectionChip(label: organization, icon: Icons.apartment_rounded, onTap: onOrganizationTap),
-          _SelectionChip(label: site, icon: Icons.location_city_rounded, onTap: onSiteTap),
-          _SelectionChip(label: building, icon: Icons.business_rounded, onTap: onBuildingTap),
-          _SelectionChip(label: floor, icon: Icons.layers_rounded, onTap: onFloorTap),
-        ],
-      ),
-    );
-  }
-}
-
-class _SelectionChip extends StatelessWidget {
-  const _SelectionChip({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F7FC),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE3E9F4)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 18, color: const Color(0xFF2155D6)),
-            const SizedBox(width: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 128),
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF1D2435)),
-              ),
-            ),
-            const SizedBox(width: 6),
-            const Icon(Icons.expand_more_rounded, size: 18, color: Color(0xFF7C869C)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({
-    required this.title,
-    required this.value,
-    required this.icon,
-  });
-
-  final String title;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F7FC),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: const Color(0xFF2155D6)),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(color: Color(0xFF7B849A), fontSize: 12)),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Color(0xFF1D2435), fontWeight: FontWeight.w700),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RouteSegmentsCard extends StatelessWidget {
-  const _RouteSegmentsCard({
-    required this.result,
-    required this.activeIndex,
-    required this.onSegmentTap,
-  });
-
-  final MultiRouteResult result;
-  final int activeIndex;
-  final ValueChanged<int> onSegmentTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.alt_route_rounded, color: Color(0xFF2155D6)),
-              const SizedBox(width: 8),
-              const Text(
-                'Katlar Arasi Rota',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-              ),
-              const Spacer(),
-              Text(
-                result.distanceLabel,
-                style: const TextStyle(
-                  color: Color(0xFF6F7992),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 54,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: result.segments.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (context, index) {
-                final segment = result.segments[index];
-                final isActive = index == activeIndex;
-
-                return InkWell(
-                  onTap: () => onSegmentTap(index),
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: isActive ? const Color(0xFF2155D6) : const Color(0xFFF5F7FC),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isActive ? const Color(0xFF2155D6) : const Color(0xFFE2E8F3),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          '${segment.buildingName} / ${segment.floorName}',
-                          style: TextStyle(
-                            color: isActive ? Colors.white : const Color(0xFF182033),
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          segment.siteName,
-                          style: TextStyle(
-                            color: isActive
-                                ? Colors.white.withValues(alpha: 0.86)
-                                : const Color(0xFF6F7992),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

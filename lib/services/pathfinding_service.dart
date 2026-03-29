@@ -119,17 +119,27 @@ class PathfindingService {
     }
   }
 
-  MapNode? nearestEmptyParkToUser(String fromNodeId, Map<String, bool> occupancyMap) {
-    final from = allNodes.where((node) => node.id == fromNodeId).firstOrNull;
+  MapNode? nearestEmptyParkToUser(
+    String fromNodeId,
+    Map<String, bool> occupancyMap,
+    Iterable<MapNode> nodes,
+  ) {
+    final sourceNodes = nodes.toList();
+    final from = sourceNodes.where((node) => node.id == fromNodeId).firstOrNull;
     if (from == null) {
       return null;
     }
-    return _nearestEmptyPark(from, occupancyMap);
+    return _nearestEmptyPark(from, occupancyMap, sourceNodes);
   }
 
-  MapNode? _nearestEmptyPark(MapNode from, Map<String, bool> occupancyMap) {
-    final emptyParks =
-        allNodes.where((node) => node.isPark && occupancyMap[node.id] == false).toList();
+  MapNode? _nearestEmptyPark(
+    MapNode from,
+    Map<String, bool> occupancyMap,
+    Iterable<MapNode> nodes,
+  ) {
+    final emptyParks = nodes
+        .where((node) => node.isPark && occupancyMap[node.id] == false)
+        .toList();
     if (emptyParks.isEmpty) {
       return null;
     }
@@ -144,8 +154,8 @@ class PathfindingService {
   double _euclidean(MapNode a, MapNode b) =>
       sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
 
-  Map<String, List<MapNode>> getParkGroups() {
-    final parks = allNodes.where((node) => node.isPark).toList()
+  Map<String, List<MapNode>> getParkGroups(Iterable<MapNode> nodes) {
+    final parks = nodes.where((node) => node.isPark).toList()
       ..sort((left, right) {
         final leftNum = int.tryParse(left.id.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
         final rightNum = int.tryParse(right.id.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;

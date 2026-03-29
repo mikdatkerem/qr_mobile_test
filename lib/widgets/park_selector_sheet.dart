@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
+
 import '../models/graph_data.dart';
 import '../services/pathfinding_service.dart';
 
 class ParkSelectorSheet extends StatelessWidget {
-  final PathfindingService pathfinder;
-  final void Function(MapNode park) onParkSelected;
-  final Map<String, bool> occupancyMap; // spotId → isOccupied
-
   const ParkSelectorSheet({
     super.key,
     required this.pathfinder,
     required this.onParkSelected,
     this.occupancyMap = const {},
+    this.nodes = const [],
   });
+
+  final PathfindingService pathfinder;
+  final void Function(MapNode park) onParkSelected;
+  final Map<String, bool> occupancyMap;
+  final List<MapNode> nodes;
 
   @override
   Widget build(BuildContext context) {
-    final groups = pathfinder.getParkGroups();
+    final groups = pathfinder.getParkGroups(nodes);
     final groupKeys = groups.keys.toList()..sort();
 
     return DraggableScrollableSheet(
@@ -47,14 +50,15 @@ class ParkSelectorSheet extends StatelessWidget {
                 children: [
                   Icon(Icons.local_parking, color: Colors.blue.shade600),
                   const SizedBox(width: 8),
-                  Text('Park Seç',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.bold)),
+                  Text(
+                    'Park Sec',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
                   const Spacer(),
-                  // Renk legend
-                  _LegendDot(color: Colors.green.shade500, label: 'Boş'),
+                  _LegendDot(color: Colors.green.shade500, label: 'Bos'),
                   const SizedBox(width: 8),
                   _LegendDot(color: Colors.red.shade500, label: 'Dolu'),
                 ],
@@ -65,8 +69,7 @@ class ParkSelectorSheet extends StatelessWidget {
             Expanded(
               child: ListView.builder(
                 controller: scrollController,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 itemCount: groupKeys.length,
                 itemBuilder: (_, gi) {
                   final parks = groups[groupKeys[gi]]!;
@@ -88,8 +91,7 @@ class ParkSelectorSheet extends StatelessWidget {
                       GridView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 4,
                           mainAxisSpacing: 8,
                           crossAxisSpacing: 8,
@@ -134,14 +136,12 @@ class ParkSelectorSheet extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: bgColor,
                                 borderRadius: BorderRadius.circular(10),
-                                border:
-                                    Border.all(color: borderColor, width: 1),
+                                border: Border.all(color: borderColor, width: 1),
                               ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.local_parking,
-                                      size: 18, color: iconColor),
+                                  Icon(Icons.local_parking, size: 18, color: iconColor),
                                   const SizedBox(height: 2),
                                   Text(
                                     num,
@@ -172,21 +172,25 @@ class ParkSelectorSheet extends StatelessWidget {
 }
 
 class _LegendDot extends StatelessWidget {
+  const _LegendDot({required this.color, required this.label});
+
   final Color color;
   final String label;
-  const _LegendDot({required this.color, required this.label});
 
   @override
   Widget build(BuildContext context) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
           const SizedBox(width: 3),
-          Text(label,
-              style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+          ),
         ],
       );
 }

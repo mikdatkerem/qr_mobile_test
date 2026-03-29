@@ -45,7 +45,7 @@ class FloorPlanWidget extends StatefulWidget {
 
 class _FloorPlanWidgetState extends State<FloorPlanWidget>
     with SingleTickerProviderStateMixin {
-  static const double _maxZoomMultiplier = 3.0;
+  static const double _maxZoomMultiplier = 5.0;
 
   late final AnimationController _glowController;
   late final Animation<double> _glowAnimation;
@@ -101,12 +101,12 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
     if (activeZoneId == null) {
       return null;
     }
-    final sourceNodes = widget.nodes ?? allNodes;
+    final sourceNodes = widget.nodes ?? const <MapNode>[];
     return sourceNodes.where((node) => node.id == activeZoneId).firstOrNull;
   }
 
-  double get _mapWidth => (widget.mapWidth ?? currentMapWidth).toDouble();
-  double get _mapHeight => (widget.mapHeight ?? currentMapHeight).toDouble();
+  double get _mapWidth => (widget.mapWidth ?? 1920).toDouble();
+  double get _mapHeight => (widget.mapHeight ?? 1080).toDouble();
 
   void _scheduleCenterOnActiveNode({bool force = false}) {
     if (_centeringScheduled) {
@@ -292,7 +292,7 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
           _scheduleCenterOnActiveNode();
         }
         final activeNode = _activeNode;
-        final sourceNodes = widget.nodes ?? allNodes;
+        final sourceNodes = widget.nodes ?? const <MapNode>[];
         final parkNodes = sourceNodes.where((node) => node.isPark).toList();
 
         return Stack(
@@ -381,7 +381,7 @@ class _FloorPlanWidgetState extends State<FloorPlanWidget>
   }
 
   String _resolveMapAssetUrl() {
-    final assetPath = widget.mapAssetPath ?? currentMapAssetPath;
+    final assetPath = widget.mapAssetPath;
     if (assetPath == null || assetPath.isEmpty) {
       return AppConfig.mapSvgUrl;
     }
@@ -431,8 +431,7 @@ class _MapAssetSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final headers = ApiClient.buildHeaders(includeJsonContentType: false);
-    final resolvedContentType =
-        contentType?.toLowerCase() ?? currentMapAssetContentType?.toLowerCase() ?? 'image/svg+xml';
+    final resolvedContentType = contentType?.toLowerCase() ?? 'image/svg+xml';
 
     if (resolvedContentType.contains('svg') || url.toLowerCase().endsWith('.svg')) {
       return SvgPicture.network(
@@ -485,6 +484,19 @@ class _ParkCell extends StatelessWidget {
     return isOccupied! ? const Color(0xFFE25757) : const Color(0xFF1C9B67);
   }
 
+  String get _displayText {
+    final label = node.label.trim();
+    if (label.isEmpty) {
+      return node.id.trim();
+    }
+
+    if (label.length <= 6) {
+      return label.toUpperCase();
+    }
+
+    return label.substring(0, 6).toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cellColor = _cellColor;
@@ -505,10 +517,10 @@ class _ParkCell extends StatelessWidget {
       ),
       alignment: Alignment.center,
       child: Text(
-        node.id.replaceAll(RegExp(r'[^0-9]'), ''),
+        _displayText,
         style: TextStyle(
           color: Colors.white,
-          fontSize: node.id.length > 3 ? 7.5 : 8,
+          fontSize: _displayText.length > 4 ? 7 : 8,
           fontWeight: FontWeight.w700,
           height: 1,
         ),

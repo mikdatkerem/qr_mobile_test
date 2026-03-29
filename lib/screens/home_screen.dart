@@ -39,6 +39,12 @@ class MapsScreenState extends State<MapsScreen> {
   FloorHierarchy? _floor;
   PublishedMapData? _map;
   List<MapNode> _displayNodes = const [];
+  List<MapNode> _mapNodes = const [];
+  String? _displayMapAssetPath;
+  String? _displayMapAssetContentType;
+  int? _displayMapWidth;
+  int? _displayMapHeight;
+  final Map<String, PublishedMapData> _publishedMapCache = {};
 
   bool _busy = false;
   bool _loading = true;
@@ -115,6 +121,11 @@ class MapsScreenState extends State<MapsScreen> {
       _multiRoute = null;
       _targetPark = null;
       _displayNodes = const [];
+      _mapNodes = const [];
+      _displayMapAssetPath = null;
+      _displayMapAssetContentType = null;
+      _displayMapWidth = null;
+      _displayMapHeight = null;
       _occupancy = {};
     });
 
@@ -157,6 +168,11 @@ class MapsScreenState extends State<MapsScreen> {
       _multiRoute = null;
       _targetPark = null;
       _displayNodes = const [];
+      _mapNodes = const [];
+      _displayMapAssetPath = null;
+      _displayMapAssetContentType = null;
+      _displayMapWidth = null;
+      _displayMapHeight = null;
       _occupancy = {};
     });
   }
@@ -179,6 +195,11 @@ class MapsScreenState extends State<MapsScreen> {
       _multiRoute = null;
       _targetPark = null;
       _displayNodes = const [];
+      _mapNodes = const [];
+      _displayMapAssetPath = null;
+      _displayMapAssetContentType = null;
+      _displayMapWidth = null;
+      _displayMapHeight = null;
       _occupancy = {};
     });
   }
@@ -211,6 +232,11 @@ class MapsScreenState extends State<MapsScreen> {
       _multiRoute = null;
       _targetPark = null;
       _displayNodes = const [];
+      _mapNodes = const [];
+      _displayMapAssetPath = null;
+      _displayMapAssetContentType = null;
+      _displayMapWidth = null;
+      _displayMapHeight = null;
       _occupancy = {};
       _lastScan = null;
     });
@@ -237,6 +263,17 @@ class MapsScreenState extends State<MapsScreen> {
   Map<String, bool> _normalizeOccupancy(Map<String, bool> occupancy) =>
       occupancy.map((key, value) => MapEntry(key.toUpperCase(), value));
 
+  Future<PublishedMapData> _getPublishedMap(String floorId) async {
+    final cached = _publishedMapCache[floorId];
+    if (cached != null) {
+      return cached;
+    }
+
+    final publishedMap = await _facilityService.getPublishedMap(floorId);
+    _publishedMapCache[floorId] = publishedMap;
+    return publishedMap;
+  }
+
   Future<void> _applySelection({
     required OrganizationHierarchy hierarchy,
     required SiteHierarchy site,
@@ -248,15 +285,7 @@ class MapsScreenState extends State<MapsScreen> {
       setState(() => _loading = true);
     }
 
-    final publishedMap = await _facilityService.getPublishedMap(floor.id);
-    replaceGraph(
-      nodes: publishedMap.nodes,
-      edges: publishedMap.edges,
-      mapAssetPath: publishedMap.assetPath,
-      mapAssetContentType: publishedMap.assetContentType,
-      mapWidth: publishedMap.width,
-      mapHeight: publishedMap.height,
-    );
+    final publishedMap = await _getPublishedMap(floor.id);
 
     if (!mounted) {
       return;
@@ -270,6 +299,11 @@ class MapsScreenState extends State<MapsScreen> {
       _floor = floor;
       _map = publishedMap;
       _displayNodes = publishedMap.nodes;
+      _mapNodes = publishedMap.nodes;
+      _displayMapAssetPath = publishedMap.assetPath;
+      _displayMapAssetContentType = publishedMap.assetContentType;
+      _displayMapWidth = publishedMap.width;
+      _displayMapHeight = publishedMap.height;
       _loading = false;
       _targetPark = null;
       _route = null;
@@ -398,6 +432,11 @@ class MapsScreenState extends State<MapsScreen> {
         _multiRoute = null;
         _targetPark = null;
         _displayNodes = const [];
+        _mapNodes = const [];
+        _displayMapAssetPath = null;
+        _displayMapAssetContentType = null;
+        _displayMapWidth = null;
+        _displayMapHeight = null;
         _occupancy = {};
         _loading = false;
       });
@@ -458,12 +497,11 @@ class MapsScreenState extends State<MapsScreen> {
           _multiRoute = null;
           _activeRouteSegmentIndex = 0;
           _route = result.nodes;
-          _displayNodes = _map?.nodes ?? allNodes;
-          if (result.mapAssetPath != null) {
-            currentMapAssetPath = result.mapAssetPath;
-            currentMapWidth = result.mapWidth ?? currentMapWidth;
-            currentMapHeight = result.mapHeight ?? currentMapHeight;
-          }
+          _displayNodes = _mapNodes;
+          _displayMapAssetPath = _map?.assetPath;
+          _displayMapAssetContentType = _map?.assetContentType;
+          _displayMapWidth = _map?.width;
+          _displayMapHeight = _map?.height;
         });
         return;
       }
@@ -500,6 +538,7 @@ class MapsScreenState extends State<MapsScreen> {
     }
 
     final segment = multiRoute.segments[index];
+    final segmentMap = await _getPublishedMap(segment.floorId);
     final occupancy = await _parkingService.getOccupancyMap(segment.floorId);
     if (!mounted) {
       return;
@@ -508,12 +547,13 @@ class MapsScreenState extends State<MapsScreen> {
     setState(() {
       _activeRouteSegmentIndex = index;
       _route = segment.nodes;
-      _displayNodes = segment.nodes;
+      _displayNodes = segmentMap.nodes;
+      _mapNodes = segmentMap.nodes;
       _occupancy = _normalizeOccupancy(occupancy);
-      currentMapAssetPath = segment.mapAssetPath;
-      currentMapAssetContentType = segment.mapAssetContentType;
-      currentMapWidth = segment.mapWidth;
-      currentMapHeight = segment.mapHeight;
+      _displayMapAssetPath = segmentMap.assetPath;
+      _displayMapAssetContentType = segmentMap.assetContentType;
+      _displayMapWidth = segmentMap.width;
+      _displayMapHeight = segmentMap.height;
     });
   }
 
@@ -526,14 +566,18 @@ class MapsScreenState extends State<MapsScreen> {
       context: context,
       barrierColor: Colors.black26,
       builder: (_) => ParkSuggestionDialog(
-        nearestToUser: _pathfinder.nearestEmptyParkToUser(_lastScan!, _occupancy),
+        nearestToUser: _pathfinder.nearestEmptyParkToUser(
+          _lastScan!,
+          _occupancy,
+          _mapNodes,
+        ),
         nearestToHospital: null,
         onSelected: (park) {
-          setState(() {
-            _targetPark = park;
-            _route = null;
-            _multiRoute = null;
-          });
+                      setState(() {
+                        _targetPark = park;
+                        _route = null;
+                        _multiRoute = null;
+                      });
           unawaited(_updateRoute(_lastScan!));
         },
       ),
@@ -608,7 +652,7 @@ class MapsScreenState extends State<MapsScreen> {
   }
 
   void _showParkConfirmDialog(String spotId) {
-    final park = allNodes
+    final park = _mapNodes
         .where((node) => (node.externalReferenceId ?? node.id).toUpperCase() == spotId)
         .firstOrNull;
     if (park == null) {
@@ -623,11 +667,11 @@ class MapsScreenState extends State<MapsScreen> {
         onConfirm: () {
           Navigator.pop(context);
           setState(() {
-            _parkedAt = park;
-            _targetPark = null;
-            _route = null;
-            _multiRoute = null;
-            _displayNodes = _map?.nodes ?? allNodes;
+                            _parkedAt = park;
+                            _targetPark = null;
+                            _route = null;
+                            _multiRoute = null;
+                            _displayNodes = _mapNodes;
           });
         },
         onDeny: () => Navigator.pop(context),
@@ -747,10 +791,10 @@ class MapsScreenState extends State<MapsScreen> {
                                         navigationRoute: _route,
                                         occupancyMap: _occupancy,
                                         nodes: _displayNodes,
-                                        mapAssetPath: _map?.assetPath,
-                                        mapAssetContentType: _map?.assetContentType,
-                                        mapWidth: _map?.width,
-                                        mapHeight: _map?.height,
+                                        mapAssetPath: _displayMapAssetPath,
+                                        mapAssetContentType: _displayMapAssetContentType,
+                                        mapWidth: _displayMapWidth,
+                                        mapHeight: _displayMapHeight,
                                       )
                                     : _MapSelectionPanel(
                                         organizations: _organizations,
@@ -817,31 +861,36 @@ class MapsScreenState extends State<MapsScreen> {
                           setState(() => _targetPark = _parkedAt);
                           unawaited(_updateRoute(_lastScan!));
                         },
-                        onClearNav: () => setState(() {
-                          _targetPark = null;
-                          _route = null;
-                          _multiRoute = null;
-                          _displayNodes = _map?.nodes ?? allNodes;
-                        }),
-                        onNearestToUser: () {
-                          if (_lastScan == null) {
-                            return;
-                          }
-                          final park = _pathfinder.nearestEmptyParkToUser(_lastScan!, _occupancy);
-                          if (park == null) {
-                            return;
-                          }
+                      onClearNav: () => setState(() {
+                        _targetPark = null;
+                        _route = null;
+                        _multiRoute = null;
+                        _displayNodes = _mapNodes;
+                      }),
+                      onNearestToUser: () {
+                        if (_lastScan == null) {
+                          return;
+                        }
+                        final park = _pathfinder.nearestEmptyParkToUser(
+                          _lastScan!,
+                          _occupancy,
+                          _mapNodes,
+                        );
+                        if (park == null) {
+                          return;
+                        }
                           setState(() {
                             _targetPark = park;
                             _multiRoute = null;
                           });
                           unawaited(_updateRoute(_lastScan!));
                         },
-                        onNearestToHospital: () {
-                          unawaited(_selectParkingNearEntrance());
-                        },
-                      ),
+                      onNearestToHospital: () {
+                        unawaited(_selectParkingNearEntrance());
+                      },
+                      parks: _mapNodes.where((node) => node.isPark).toList(),
                     ),
+                  ),
                   ),
               ],
             ),

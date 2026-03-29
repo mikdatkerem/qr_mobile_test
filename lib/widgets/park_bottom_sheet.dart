@@ -1,9 +1,11 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../models/graph_data.dart';
 import '../services/pathfinding_service.dart';
 
-class ParkBottomSheet extends StatelessWidget {
+class ParkBottomSheet extends StatefulWidget {
   const ParkBottomSheet({
     super.key,
     this.controller,
@@ -24,11 +26,12 @@ class ParkBottomSheet extends StatelessWidget {
     required this.onClearNav,
     required this.onNearestToUser,
     required this.onNearestToHospital,
+    required this.parks,
   });
 
-  static const double peekSize = 0.09;
-  static const double mediumSize = 0.28;
-  static const double fullSize = 0.72;
+  static const double peekSize = 0.08;
+  static const double mediumSize = 0.32;
+  static const double fullSize = 0.76;
 
   final Map<String, bool> occupancyMap;
   final MapNode? targetPark;
@@ -47,289 +50,325 @@ class ParkBottomSheet extends StatelessWidget {
   final VoidCallback onClearNav;
   final VoidCallback onNearestToUser;
   final VoidCallback onNearestToHospital;
+  final List<MapNode> parks;
   final DraggableScrollableController? controller;
 
   @override
+  State<ParkBottomSheet> createState() => _ParkBottomSheetState();
+}
+
+class _ParkBottomSheetState extends State<ParkBottomSheet> {
+  bool _showParks = false;
+
+  @override
   Widget build(BuildContext context) {
-    final parks = allNodes.where((node) => node.isPark).toList();
     final bottom = MediaQuery.of(context).padding.bottom;
 
     return DraggableScrollableSheet(
-      controller: controller,
+      controller: widget.controller,
       expand: false,
-      initialChildSize: peekSize,
-      minChildSize: peekSize,
-      maxChildSize: fullSize,
+      initialChildSize: ParkBottomSheet.peekSize,
+      minChildSize: ParkBottomSheet.peekSize,
+      maxChildSize: ParkBottomSheet.fullSize,
       snap: true,
-      snapSizes: const [peekSize, mediumSize, fullSize],
+      snapSizes: const [
+        ParkBottomSheet.peekSize,
+        ParkBottomSheet.mediumSize,
+        ParkBottomSheet.fullSize,
+      ],
       builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            boxShadow: [
-              BoxShadow(
-                color: Color(0x18081426),
-                blurRadius: 20,
-                offset: Offset(0, -6),
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF6D6F75).withValues(alpha: 0.78),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(30)),
               ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              Positioned(
-                top: 10,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    width: 52,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD6DDEA),
-                      borderRadius: BorderRadius.circular(12),
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 10,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        width: 54,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.36),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              Positioned.fill(
-                top: 18,
-                child: ListView(
-                  controller: scrollController,
-                  padding: EdgeInsets.fromLTRB(18, 46, 18, bottom + 16),
-                  children: [
-                    Row(
+                  Positioned.fill(
+                    top: 22,
+                    child: ListView(
+                      controller: scrollController,
+                      padding: EdgeInsets.fromLTRB(18, 18, 18, bottom + 18),
                       children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 46,
+                              height: 46,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: const Icon(
+                                Icons.local_parking_rounded,
+                                color: Color(0xFF2155D6),
+                                size: 28,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.mapName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 17,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${widget.emptyCount} BOS · ${widget.fullCount} DOLU · ${widget.totalCount}',
+                                    style: TextStyle(
+                                      color: const Color(0xFF7EF0B3)
+                                          .withValues(alpha: 0.95),
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 11,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                  Text(
+                                    'TOPLAM',
+                                    style: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.6),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 11,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.14),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                _showParks
+                                    ? Icons.grid_view_rounded
+                                    : Icons.search_rounded,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (widget.multiRoute != null &&
+                            widget.multiRoute!.segments.length > 1) ...[
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            height: 42,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: widget.multiRoute!.segments.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(width: 8),
+                              itemBuilder: (context, index) {
+                                final segment =
+                                    widget.multiRoute!.segments[index];
+                                final active =
+                                    index == widget.activeSegmentIndex;
+                                return InkWell(
+                                  onTap: () => widget.onSegmentTap(index),
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12),
+                                    decoration: BoxDecoration(
+                                      color: active
+                                          ? Colors.white
+                                          : Colors.white
+                                              .withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '${segment.buildingName} / ${segment.floorName}',
+                                      style: TextStyle(
+                                        color: active
+                                            ? const Color(0xFF182033)
+                                            : Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 16),
                         Container(
-                          width: 44,
-                          height: 44,
+                          padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFEAF0FF),
+                            color: Colors.white.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(16),
                           ),
-                          child: const Icon(
-                            Icons.map_rounded,
-                            color: Color(0xFF2155D6),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Row(
                             children: [
-                              Text(
-                                mapName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF1B2438),
+                              Expanded(
+                                child: _ModeButton(
+                                  active: !_showParks,
+                                  label: 'Navigasyon',
+                                  onTap: () =>
+                                      setState(() => _showParks = false),
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '$emptyCount bos · $fullCount dolu · $totalCount toplam',
-                                style: const TextStyle(
-                                  color: Color(0xFF6D7890),
-                                  fontSize: 12,
+                              Expanded(
+                                child: _ModeButton(
+                                  active: _showParks,
+                                  label: 'Park Alanlari',
+                                  onTap: () =>
+                                      setState(() => _showParks = true),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        if (targetPark != null) _StatusPill(label: 'Rota ${targetPark!.id}'),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _InfoCard(
-                            title: 'Aktif nokta',
-                            value: activeReference ?? 'QR bekleniyor',
-                            icon: Icons.pin_drop_outlined,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _InfoCard(
-                            title: 'Hedef',
-                            value: targetPark?.label ?? 'Secilmedi',
-                            icon: Icons.flag_outlined,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (multiRoute != null && multiRoute!.segments.length > 1) ...[
-                      const SizedBox(height: 18),
-                      const _SectionTitle(title: 'Katlar arasi rota'),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 60,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: multiRoute!.segments.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 10),
-                          itemBuilder: (context, index) {
-                            final segment = multiRoute!.segments[index];
-                            final isActive = index == activeSegmentIndex;
-
-                            return InkWell(
-                              onTap: () => onSegmentTap(index),
-                              borderRadius: BorderRadius.circular(16),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isActive
-                                      ? const Color(0xFF2155D6)
-                                      : const Color(0xFFF5F7FC),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: isActive
-                                        ? const Color(0xFF2155D6)
-                                        : const Color(0xFFE2E8F3),
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      '${segment.buildingName} / ${segment.floorName}',
-                                      style: TextStyle(
-                                        color: isActive
-                                            ? Colors.white
-                                            : const Color(0xFF182033),
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      segment.siteName,
-                                      style: TextStyle(
-                                        color: isActive
-                                            ? Colors.white.withValues(alpha: 0.86)
-                                            : const Color(0xFF6F7992),
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                        const SizedBox(height: 16),
+                        if (!_showParks) ...[
+                          GridView.count(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: 1.52,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            children: [
+                              _ActionCard(
+                                icon: Icons.near_me_rounded,
+                                title: 'Bana En\nYakin',
+                                enabled: true,
+                                onTap: widget.onNearestToUser,
                               ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 18),
-                    const _SectionTitle(title: 'Aksiyonlar'),
-                    const SizedBox(height: 10),
-                    _ActionTile(
-                      icon: Icons.near_me_rounded,
-                      title: 'Bana en yakin',
-                      subtitle: 'Konumunuza gore en uygun bos alan',
-                      onTap: onNearestToUser,
-                    ),
-                    const SizedBox(height: 10),
-                    _ActionTile(
-                      icon: Icons.local_hospital_outlined,
-                      title: 'Hastane girisine yakin',
-                      subtitle: 'Girise yakin uygun park alanini bul',
-                      onTap: onNearestToHospital,
-                    ),
-                    const SizedBox(height: 10),
-                    if (parkedAt != null) ...[
-                      _ActionTile(
-                        icon: Icons.directions_car_outlined,
-                        title: 'Aracima git',
-                        subtitle: '${parkedAt!.id} alanina rota ciz',
-                        onTap: onNavigateToCar,
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                    _ActionTile(
-                      icon: Icons.logout_rounded,
-                      title: 'Cikisa git',
-                      subtitle: 'Bulundugunuz kattan cikis rotasi olustur',
-                      onTap: onNavigateToExit,
-                    ),
-                    if (targetPark != null) ...[
-                      const SizedBox(height: 10),
-                      _ActionTile(
-                        icon: Icons.close_rounded,
-                        title: 'Rotayi temizle',
-                        subtitle: 'Aktif hedefe ait rota gorunumunu kapat',
-                        destructive: true,
-                        onTap: onClearNav,
-                      ),
-                    ],
-                    const SizedBox(height: 18),
-                    const _SectionTitle(title: 'Park alanlari'),
-                    const SizedBox(height: 10),
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 5,
-                        crossAxisSpacing: 8,
-                        mainAxisSpacing: 8,
-                        childAspectRatio: 1.12,
-                      ),
-                      itemCount: parks.length,
-                      itemBuilder: (context, index) {
-                        final park = parks[index];
-                        final parkKey = (park.externalReferenceId ?? park.id).toUpperCase();
-                        final isOccupied = occupancyMap[parkKey];
-                        final isTarget = targetPark?.id == park.id;
-
-                        return InkWell(
-                          onTap: () => onParkSelected(park),
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: isTarget ? const Color(0xFF2155D6) : Colors.white,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: isTarget
-                                    ? const Color(0xFF2155D6)
-                                    : const Color(0xFFE1E8F2),
+                              _ActionCard(
+                                icon: Icons.local_hospital_outlined,
+                                title: 'Hastane\nGirisi',
+                                enabled: true,
+                                onTap: widget.onNearestToHospital,
                               ),
+                              _ActionCard(
+                                icon: Icons.directions_car_outlined,
+                                title: 'Aracima\nGit',
+                                enabled: widget.parkedAt != null,
+                                onTap: widget.parkedAt != null
+                                    ? widget.onNavigateToCar
+                                    : null,
+                              ),
+                              _ActionCard(
+                                icon: Icons.logout_rounded,
+                                title: 'Cikisa Git',
+                                enabled: true,
+                                onTap: widget.onNavigateToExit,
+                              ),
+                            ],
+                          ),
+                          if (widget.targetPark != null) ...[
+                            const SizedBox(height: 12),
+                            _GhostAction(
+                              label: 'Rotayi Temizle',
+                              onTap: widget.onClearNav,
                             ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  park.id,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
+                          ],
+                        ] else ...[
+                          GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 4,
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 10,
+                              childAspectRatio: 1.15,
+                            ),
+                            itemCount: widget.parks.length,
+                            itemBuilder: (context, index) {
+                              final park = widget.parks[index];
+                              final parkKey =
+                                  (park.externalReferenceId ?? park.id)
+                                      .toUpperCase();
+                              final isOccupied = widget.occupancyMap[parkKey];
+                              final isTarget = widget.targetPark?.id == park.id;
+
+                              return InkWell(
+                                onTap: () => widget.onParkSelected(park),
+                                borderRadius: BorderRadius.circular(16),
+                                child: Container(
+                                  decoration: BoxDecoration(
                                     color: isTarget
                                         ? Colors.white
-                                        : const Color(0xFF1B2438),
+                                        : Colors.white.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: isTarget
+                                          ? Colors.white
+                                          : Colors.white
+                                              .withValues(alpha: 0.12),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        park.label,
+                                        style: TextStyle(
+                                          color: isTarget
+                                              ? const Color(0xFF182033)
+                                              : Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color:
+                                              _spotColor(isOccupied, isTarget),
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 6),
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: _spotColor(isOccupied, isTarget),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              );
+                            },
                           ),
-                        );
-                      },
+                        ],
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         );
       },
@@ -338,7 +377,7 @@ class ParkBottomSheet extends StatelessWidget {
 
   Color _spotColor(bool? isOccupied, bool isTarget) {
     if (isTarget) {
-      return Colors.white;
+      return const Color(0xFF2155D6);
     }
     if (isOccupied == null) {
       return const Color(0xFFB5BECE);
@@ -347,151 +386,93 @@ class ParkBottomSheet extends StatelessWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w800,
-        color: Color(0xFF1B2438),
-      ),
-    );
-  }
-}
-
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({
-    required this.title,
-    required this.value,
-    required this.icon,
-  });
-
-  final String title;
-  final String value;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF6F8FC),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: const Color(0xFF2155D6), size: 18),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF6D7890),
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF1B2438),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActionTile extends StatelessWidget {
-  const _ActionTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
+class _ModeButton extends StatelessWidget {
+  const _ModeButton({
+    required this.active,
+    required this.label,
     required this.onTap,
-    this.destructive = false,
   });
 
-  final IconData icon;
-  final String title;
-  final String subtitle;
+  final bool active;
+  final String label;
   final VoidCallback onTap;
-  final bool destructive;
 
   @override
   Widget build(BuildContext context) {
-    final titleColor = destructive ? const Color(0xFFC53A3A) : const Color(0xFF1B2438);
-
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Ink(
-        padding: const EdgeInsets.all(16),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        height: 42,
         decoration: BoxDecoration(
-          color: const Color(0xFFF6F8FC),
+          color: active
+              ? Colors.white.withValues(alpha: 0.22)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: active ? 1 : 0.72),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionCard extends StatelessWidget {
+  const _ActionCard({
+    required this.icon,
+    required this.title,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: enabled ? 0.12 : 0.08),
           borderRadius: BorderRadius.circular(18),
         ),
         child: Row(
           children: [
             Container(
-              width: 42,
-              height: 42,
+              width: 38,
+              height: 38,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 icon,
-                color: destructive ? const Color(0xFFC53A3A) : const Color(0xFF2155D6),
+                color:
+                    enabled ? const Color(0xFF2155D6) : const Color(0xFFA4ACB9),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: titleColor,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      color: Color(0xFF6D7890),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: enabled ? 1 : 0.55),
+                  fontWeight: FontWeight.w700,
+                  height: 1.2,
+                ),
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: Color(0xFF9AA5BC)),
           ],
         ),
       ),
@@ -499,25 +480,33 @@ class _ActionTile extends StatelessWidget {
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.label});
+class _GhostAction extends StatelessWidget {
+  const _GhostAction({
+    required this.label,
+    required this.onTap,
+  });
 
   final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEAF0FF),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Color(0xFF2155D6),
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        height: 42,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+        ),
+        alignment: Alignment.center,
+        child: const Text(
+          'Rotayi Temizle',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );

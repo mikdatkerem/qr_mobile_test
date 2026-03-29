@@ -7,6 +7,8 @@ class MapNode {
     required this.x,
     required this.y,
     required this.type,
+    this.normalizedX,
+    this.normalizedY,
     this.externalReferenceId,
   });
 
@@ -15,6 +17,8 @@ class MapNode {
   final double x;
   final double y;
   final NodeType type;
+  final double? normalizedX;
+  final double? normalizedY;
   final String? externalReferenceId;
 
   factory MapNode.fromLegacyJson(Map<String, dynamic> json) {
@@ -31,6 +35,8 @@ class MapNode {
       x: (json['x'] as num).toDouble(),
       y: (json['y'] as num).toDouble(),
       type: type,
+      normalizedX: null,
+      normalizedY: null,
       externalReferenceId: id,
     );
   }
@@ -52,12 +58,17 @@ class MapNode {
       x: (json['pixelX'] as num).toDouble(),
       y: (json['pixelY'] as num).toDouble(),
       type: type,
+      normalizedX: (json['normalizedX'] as num?)?.toDouble(),
+      normalizedY: (json['normalizedY'] as num?)?.toDouble(),
       externalReferenceId: json['externalReferenceId'] as String?,
     );
   }
 
   bool get isPark => type == NodeType.park;
   bool get isQr => type == NodeType.qr;
+
+  double resolveX(double mapWidth) => (normalizedX != null ? normalizedX! * mapWidth : x);
+  double resolveY(double mapHeight) => (normalizedY != null ? normalizedY! * mapHeight : y);
 }
 
 class MapEdge {

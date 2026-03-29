@@ -20,6 +20,20 @@ class OrganizationSummary {
   }
 }
 
+class MapOpenRequest {
+  const MapOpenRequest({
+    required this.organizationId,
+    this.siteId,
+    this.buildingId,
+    this.floorId,
+  });
+
+  final String organizationId;
+  final String? siteId;
+  final String? buildingId;
+  final String? floorId;
+}
+
 class OrganizationHierarchy {
   const OrganizationHierarchy({
     required this.id,
@@ -120,7 +134,7 @@ class FloorHierarchy {
   }
 
   bool get hasPublishedMap =>
-      mapVersions.any((version) => version.status.toLowerCase() == 'published');
+      mapVersions.any((version) => version.isPublished);
 }
 
 class MapVersionSummary {
@@ -133,6 +147,11 @@ class MapVersionSummary {
   final String id;
   final String name;
   final String status;
+
+  bool get isPublished {
+    final normalized = status.trim().toLowerCase();
+    return normalized == 'published' || normalized == '2';
+  }
 
   factory MapVersionSummary.fromJson(Map<String, dynamic> json) {
     return MapVersionSummary(

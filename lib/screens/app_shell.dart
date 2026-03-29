@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_session_controller.dart';
+import '../models/facility_models.dart';
 import 'home_overview_screen.dart';
 import 'home_screen.dart';
 import 'profile_screen.dart';
@@ -22,7 +23,7 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     final pages = [
       HomeOverviewScreen(
-        onOpenMaps: () => setState(() => _currentIndex = 1),
+        onOpenMaps: _handleOpenMaps,
         onQuickScan: _handleQuickScan,
         profile: widget.sessionController.profile,
       ),
@@ -69,7 +70,7 @@ class _AppShellState extends State<AppShell> {
                       _NavItem(
                         icon: Icons.map_outlined,
                         activeIcon: Icons.map_rounded,
-                        label: 'Haritalar',
+                        label: 'Bul',
                         selected: _currentIndex == 1,
                         onTap: () => setState(() => _currentIndex = 1),
                       ),
@@ -92,6 +93,14 @@ class _AppShellState extends State<AppShell> {
     setState(() => _currentIndex = 1);
     await Future<void>.delayed(const Duration(milliseconds: 80));
     await _mapsKey.currentState?.openByQrReference(referenceId);
+  }
+
+  Future<void> _handleOpenMaps(MapOpenRequest? request) async {
+    setState(() => _currentIndex = 1);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    if (request != null) {
+      await _mapsKey.currentState?.openSelection(request);
+    }
   }
 }
 

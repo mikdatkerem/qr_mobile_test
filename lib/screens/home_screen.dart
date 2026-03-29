@@ -74,24 +74,146 @@ class MapsScreenState extends State<MapsScreen> {
   Future<void> _loadFacilityContext() async {
     try {
       final organizations = await _facilityService.getOrganizations();
-      final hierarchy =
-          await _facilityService.getOrganizationHierarchy(organizations.first.id);
-      final selection = _firstPublishedFloor(hierarchy);
-      if (selection == null) {
-        throw Exception('Yayinlanmis harita bulunamadi.');
+      if (!mounted) {
+        return;
       }
-      await _applySelection(
-        hierarchy: hierarchy,
-        site: selection.site,
-        building: selection.building,
-        floor: selection.floor,
-        organizations: organizations,
-      );
+
+      setState(() {
+        _organizations = organizations;
+        _loading = false;
+      });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
+
       setState(() => _loading = false);
       _showError(error);
     }
+  }
+
+  List<SiteHierarchy> get _availableSites => _hierarchy?.sites ?? const [];
+
+  List<BuildingHierarchy> get _availableBuildings => _site?.buildings ?? const [];
+
+  List<FloorHierarchy> get _availableFloors =>
+      _building?.floors.where((item) => item.hasPublishedMap).toList() ?? const [];
+
+  Future<void> _onOrganizationChanged(String? organizationId) async {
+    if (organizationId == null) {
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _hierarchy = null;
+      _site = null;
+      _building = null;
+      _floor = null;
+      _map = null;
+      _route = null;
+      _multiRoute = null;
+      _targetPark = null;
+      _displayNodes = const [];
+      _occupancy = {};
+    });
+
+    try {
+      final hierarchy = await _facilityService.getOrganizationHierarchy(organizationId);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _hierarchy = hierarchy;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _loading = false);
+      _showError(error);
+    }
+  }
+
+  void _onSiteChanged(String? siteId) {
+    if (siteId == null || _hierarchy == null) {
+      return;
+    }
+
+    final site = _hierarchy!.sites.where((item) => item.id == siteId).firstOrNull;
+    if (site == null) {
+      return;
+    }
+
+    setState(() {
+      _site = site;
+      _building = null;
+      _floor = null;
+      _map = null;
+      _route = null;
+      _multiRoute = null;
+      _targetPark = null;
+      _displayNodes = const [];
+      _occupancy = {};
+    });
+  }
+
+  void _onBuildingChanged(String? buildingId) {
+    if (buildingId == null || _site == null) {
+      return;
+    }
+
+    final building = _site!.buildings.where((item) => item.id == buildingId).firstOrNull;
+    if (building == null) {
+      return;
+    }
+
+    setState(() {
+      _building = building;
+      _floor = null;
+      _map = null;
+      _route = null;
+      _multiRoute = null;
+      _targetPark = null;
+      _displayNodes = const [];
+      _occupancy = {};
+    });
+  }
+
+  Future<void> _onFloorChanged(String? floorId) async {
+    if (floorId == null || _hierarchy == null || _site == null || _building == null) {
+      return;
+    }
+
+    final floor = _building!.floors.where((item) => item.id == floorId).firstOrNull;
+    if (floor == null) {
+      return;
+    }
+
+    await _applySelection(
+      hierarchy: _hierarchy!,
+      site: _site!,
+      building: _building!,
+      floor: floor,
+    );
+  }
+
+  void _clearSelectedMap() {
+    setState(() {
+      _site = null;
+      _building = null;
+      _floor = null;
+      _map = null;
+      _route = null;
+      _multiRoute = null;
+      _targetPark = null;
+      _displayNodes = const [];
+      _occupancy = {};
+      _lastScan = null;
+    });
   }
 
   Future<void> _loadOccupancy() async {
@@ -106,7 +228,9 @@ class MapsScreenState extends State<MapsScreen> {
         setState(() => _occupancy = _normalizeOccupancy(occupancy));
       }
     } catch (error) {
-      if (mounted) _showError('Park durumu yuklenemedi: $error');
+      if (mounted) {
+        _showError('Park durumu yuklenemedi: $error');
+      }
     }
   }
 
@@ -120,7 +244,10 @@ class MapsScreenState extends State<MapsScreen> {
     required FloorHierarchy floor,
     List<OrganizationSummary>? organizations,
   }) async {
-    if (mounted) setState(() => _loading = true);
+    if (mounted) {
+      setState(() => _loading = true);
+    }
+
     final publishedMap = await _facilityService.getPublishedMap(floor.id);
     replaceGraph(
       nodes: publishedMap.nodes,
@@ -130,7 +257,11 @@ class MapsScreenState extends State<MapsScreen> {
       mapWidth: publishedMap.width,
       mapHeight: publishedMap.height,
     );
-    if (!mounted) return;
+
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
       _organizations = organizations ?? _organizations;
       _hierarchy = hierarchy;
@@ -146,15 +277,20 @@ class MapsScreenState extends State<MapsScreen> {
       _activeRouteSegmentIndex = 0;
       _lastScan = null;
     });
+
     await _loadOccupancy();
   }
 
   void _onOccupancyChanged(String spotId, bool isOccupied) {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
+
     final key = spotId.toUpperCase();
     if (!_occupancy.containsKey(key)) {
       return;
     }
+
     final wasEmpty = _occupancy[key] == false;
     setState(() => _occupancy[key] = isOccupied);
     final targetRef = (_targetPark?.externalReferenceId ?? _targetPark?.id)?.toUpperCase();
@@ -165,26 +301,39 @@ class MapsScreenState extends State<MapsScreen> {
 
   Future<void> _onQrDetected(BarcodeCapture capture) async {
     final value = capture.barcodes.firstOrNull?.rawValue?.trim();
-    if (value == null || value.isEmpty) return;
+    if (value == null || value.isEmpty) {
+      return;
+    }
+
     final now = DateTime.now();
     if (_lastScan == value &&
         _lastScanTime != null &&
         now.difference(_lastScanTime!) < const Duration(seconds: 3)) {
       return;
     }
+
     _lastScan = value;
     _lastScanTime = now;
     await openByQrReference(value);
   }
 
   Future<void> openByQrReference(String referenceId) async {
-    if (_busy) return;
+    if (_busy) {
+      return;
+    }
+
     await HapticFeedback.mediumImpact();
-    if (mounted) setState(() => _busy = true);
+    if (mounted) {
+      setState(() => _busy = true);
+    }
+
     try {
       final context = await _facilityService.resolveQrScanContext(referenceId);
       await _applyScanContext(context);
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
+
       setState(() => _busy = false);
       if (_targetPark != null) {
         await _updateRoute(referenceId);
@@ -192,8 +341,72 @@ class MapsScreenState extends State<MapsScreen> {
         _showSuggestionDialog();
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
+
       setState(() => _busy = false);
+      _showError(error);
+    }
+  }
+
+  Future<void> openSelection(MapOpenRequest request) async {
+    if (_busy) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() => _loading = true);
+    }
+
+    try {
+      final hierarchy = _hierarchy?.id == request.organizationId
+          ? _hierarchy!
+          : await _facilityService.getOrganizationHierarchy(request.organizationId);
+
+      final site = request.siteId == null
+          ? null
+          : hierarchy.sites.where((item) => item.id == request.siteId).firstOrNull;
+      final building = request.buildingId == null
+          ? null
+          : site?.buildings.where((item) => item.id == request.buildingId).firstOrNull;
+      final floor = request.floorId == null
+          ? null
+          : building?.floors.where((item) => item.id == request.floorId).firstOrNull;
+
+      if (site != null && building != null && floor != null) {
+        await _applySelection(
+          hierarchy: hierarchy,
+          site: site,
+          building: building,
+          floor: floor,
+        );
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _hierarchy = hierarchy;
+        _site = site;
+        _building = building;
+        _floor = null;
+        _map = null;
+        _route = null;
+        _multiRoute = null;
+        _targetPark = null;
+        _displayNodes = const [];
+        _occupancy = {};
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() => _loading = false);
       _showError(error);
     }
   }
@@ -207,9 +420,11 @@ class MapsScreenState extends State<MapsScreen> {
         site?.buildings.where((item) => item.id == context.buildingId).firstOrNull;
     final floor =
         building?.floors.where((item) => item.id == context.floorId).firstOrNull;
+
     if (site == null || building == null || floor == null) {
       throw Exception('QR baglami icin kat bulunamadi.');
     }
+
     if (_floor?.id != floor.id || _hierarchy?.id != hierarchy.id) {
       await _applySelection(
         hierarchy: hierarchy,
@@ -218,18 +433,26 @@ class MapsScreenState extends State<MapsScreen> {
         floor: floor,
       );
     }
+
     _lastScan = context.referenceId;
   }
 
   Future<void> _updateRoute(String fromReferenceId) async {
-    if (_targetPark == null || _floor == null) return;
+    if (_targetPark == null || _floor == null) {
+      return;
+    }
+
     try {
       final result = await _pathfinder.findFacilityRoute(
         floorId: _floor!.id,
         fromReferenceId: fromReferenceId,
         toReferenceId: _targetPark!.externalReferenceId ?? _targetPark!.id,
       );
-      if (!mounted) return;
+
+      if (!mounted) {
+        return;
+      }
+
       if (result != null) {
         setState(() {
           _multiRoute = null;
@@ -250,7 +473,10 @@ class MapsScreenState extends State<MapsScreen> {
         toReferenceId: _targetPark!.externalReferenceId ?? _targetPark!.id,
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
+
       if (multiRoute == null || multiRoute.segments.isEmpty) {
         _showError('Bu konumdan hedefe rota bulunamadi.');
         return;
@@ -275,7 +501,6 @@ class MapsScreenState extends State<MapsScreen> {
 
     final segment = multiRoute.segments[index];
     final occupancy = await _parkingService.getOccupancyMap(segment.floorId);
-
     if (!mounted) {
       return;
     }
@@ -293,7 +518,10 @@ class MapsScreenState extends State<MapsScreen> {
   }
 
   void _showSuggestionDialog() {
-    if (_lastScan == null) return;
+    if (_lastScan == null) {
+      return;
+    }
+
     showDialog(
       context: context,
       barrierColor: Colors.black26,
@@ -383,7 +611,10 @@ class MapsScreenState extends State<MapsScreen> {
     final park = allNodes
         .where((node) => (node.externalReferenceId ?? node.id).toUpperCase() == spotId)
         .firstOrNull;
-    if (park == null) return;
+    if (park == null) {
+      return;
+    }
+
     showDialog(
       context: context,
       barrierColor: Colors.black26,
@@ -402,151 +633,6 @@ class MapsScreenState extends State<MapsScreen> {
         onDeny: () => Navigator.pop(context),
       ),
     );
-  }
-
-  void _showPicker<T>({
-    required List<T> items,
-    required T? selected,
-    required String Function(T) title,
-    String Function(T)? subtitle,
-    required Future<void> Function(T) onSelected,
-  }) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        top: false,
-        child: ListView.separated(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-          itemCount: items.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (_, index) {
-            final item = items[index];
-            return ListTile(
-              title: Text(title(item), style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: subtitle != null ? Text(subtitle(item)) : null,
-              trailing: identical(item, selected)
-                  ? const Icon(Icons.check_circle, color: Color(0xFF2155D6))
-                  : null,
-              onTap: () async {
-                Navigator.pop(sheetContext);
-                await onSelected(item);
-              },
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  void _showOrganizationPicker() => _showPicker<OrganizationSummary>(
-        items: _organizations,
-        selected: _organizations.where((o) => o.id == _hierarchy?.id).firstOrNull,
-        title: (item) => item.name,
-        subtitle: (item) => item.description ?? '',
-        onSelected: (organization) async {
-          final hierarchy = await _facilityService.getOrganizationHierarchy(organization.id);
-          final selection = _firstPublishedFloor(hierarchy);
-          if (selection == null) throw Exception('Yayinlanmis harita bulunamadi.');
-          await _applySelection(
-            hierarchy: hierarchy,
-            site: selection.site,
-            building: selection.building,
-            floor: selection.floor,
-          );
-        },
-      );
-
-  void _showSitePicker() {
-    final hierarchy = _hierarchy;
-    if (hierarchy == null) return;
-    _showPicker<SiteHierarchy>(
-      items: hierarchy.sites,
-      selected: _site,
-      title: (item) => item.name,
-      subtitle: (item) => item.code,
-      onSelected: (site) async {
-        final selection = _firstPublishedFloorInSite(site);
-        if (selection == null) throw Exception('Yayinlanmis harita bulunamadi.');
-        await _applySelection(
-          hierarchy: hierarchy,
-          site: selection.site,
-          building: selection.building,
-          floor: selection.floor,
-        );
-      },
-    );
-  }
-
-  void _showBuildingPicker() {
-    final hierarchy = _hierarchy;
-    final site = _site;
-    if (hierarchy == null || site == null) return;
-    _showPicker<BuildingHierarchy>(
-      items: site.buildings,
-      selected: _building,
-      title: (item) => item.name,
-      subtitle: (item) => item.code,
-      onSelected: (building) async {
-        final floor = _firstPublishedFloorInBuilding(building);
-        if (floor == null) throw Exception('Yayinlanmis harita bulunamadi.');
-        await _applySelection(
-          hierarchy: hierarchy,
-          site: site,
-          building: building,
-          floor: floor,
-        );
-      },
-    );
-  }
-
-  void _showFloorPicker() {
-    final hierarchy = _hierarchy;
-    if (hierarchy == null) return;
-    final options = <_FloorOption>[
-      for (final site in hierarchy.sites)
-        for (final building in site.buildings)
-          for (final floor in building.floors.where((item) => item.hasPublishedMap))
-            _FloorOption(site: site, building: building, floor: floor),
-    ];
-    _showPicker<_FloorOption>(
-      items: options,
-      selected: options.where((o) => o.floor.id == _floor?.id).firstOrNull,
-      title: (item) => item.floor.name,
-      subtitle: (item) => '${item.site.name} / ${item.building.name}',
-      onSelected: (item) => _applySelection(
-        hierarchy: hierarchy,
-        site: item.site,
-        building: item.building,
-        floor: item.floor,
-      ),
-    );
-  }
-
-  _FloorOption? _firstPublishedFloor(OrganizationHierarchy hierarchy) {
-    for (final site in hierarchy.sites) {
-      final selection = _firstPublishedFloorInSite(site);
-      if (selection != null) return selection;
-    }
-    return null;
-  }
-
-  _FloorOption? _firstPublishedFloorInSite(SiteHierarchy site) {
-    for (final building in site.buildings) {
-      final floor = _firstPublishedFloorInBuilding(building);
-      if (floor != null) return _FloorOption(site: site, building: building, floor: floor);
-    }
-    return null;
-  }
-
-  FloorHierarchy? _firstPublishedFloorInBuilding(BuildingHierarchy building) {
-    for (final floor in building.floors) {
-      if (floor.hasPublishedMap) return floor;
-    }
-    return null;
   }
 
   void _showError(Object error) {
@@ -579,10 +665,13 @@ class MapsScreenState extends State<MapsScreen> {
   Widget build(BuildContext context) {
     final emptyCount = _occupancy.values.where((value) => value == false).length;
     final fullCount = _occupancy.values.where((value) => value == true).length;
-    final activeNodeId = _displayNodes
-        .where((node) => node.externalReferenceId == _lastScan)
-        .firstOrNull
-        ?.id;
+    final hasMap = _map != null;
+    final activeNodeId = _lastScan == null
+        ? null
+        : _displayNodes
+            .where((node) => node.externalReferenceId == _lastScan)
+            .firstOrNull
+            ?.id;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3F6FB),
@@ -592,7 +681,7 @@ class MapsScreenState extends State<MapsScreen> {
               children: [
                 GestureDetector(
                   behavior: HitTestBehavior.translucent,
-                  onTap: _collapseSheet,
+                  onTap: hasMap ? _collapseSheet : null,
                   child: SafeArea(
                     child: Column(
                       children: [
@@ -611,7 +700,7 @@ class MapsScreenState extends State<MapsScreen> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  '${_site?.name ?? 'Yerleşke'} / ${_building?.name ?? 'Bina'}',
+                                  _building?.name ?? 'Bina secin',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
@@ -621,6 +710,15 @@ class MapsScreenState extends State<MapsScreen> {
                                   ),
                                 ),
                               ),
+                              if (hasMap)
+                                IconButton(
+                                  onPressed: _clearSelectedMap,
+                                  icon: const Icon(Icons.layers_clear_rounded),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: const Color(0xFF182033),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -642,17 +740,32 @@ class MapsScreenState extends State<MapsScreen> {
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(28),
-                              child: FloorPlanWidget(
-                                visitedIds: const {},
-                                activeZoneId: activeNodeId,
-                                navigationRoute: _route,
-                                  occupancyMap: _occupancy,
-                                  nodes: _displayNodes,
-                                  mapAssetPath: _map?.assetPath,
-                                  mapAssetContentType: _map?.assetContentType,
-                                  mapWidth: _map?.width,
-                                  mapHeight: _map?.height,
-                                ),
+                                child: hasMap
+                                    ? FloorPlanWidget(
+                                        visitedIds: const {},
+                                        activeZoneId: activeNodeId,
+                                        navigationRoute: _route,
+                                        occupancyMap: _occupancy,
+                                        nodes: _displayNodes,
+                                        mapAssetPath: _map?.assetPath,
+                                        mapAssetContentType: _map?.assetContentType,
+                                        mapWidth: _map?.width,
+                                        mapHeight: _map?.height,
+                                      )
+                                    : _MapSelectionPanel(
+                                        organizations: _organizations,
+                                        selectedOrganizationId: _hierarchy?.id,
+                                        sites: _availableSites,
+                                        selectedSiteId: _site?.id,
+                                        buildings: _availableBuildings,
+                                        selectedBuildingId: _building?.id,
+                                        floors: _availableFloors,
+                                        selectedFloorId: _floor?.id,
+                                        onOrganizationChanged: _onOrganizationChanged,
+                                        onSiteChanged: _onSiteChanged,
+                                        onBuildingChanged: _onBuildingChanged,
+                                        onFloorChanged: _onFloorChanged,
+                                      ),
                               ),
                             ),
                           ),
@@ -661,80 +774,228 @@ class MapsScreenState extends State<MapsScreen> {
                     ),
                   ),
                 ),
-                ParkBottomSheet(
-                  controller: _sheetController,
-                  occupancyMap: _occupancy,
-                  targetPark: _targetPark,
-                  parkedAt: _parkedAt,
-                  organizationLabel: _hierarchy?.name ?? 'Organizasyon',
-                  siteLabel: _site?.name ?? 'Yerleşke',
-                  buildingLabel: _building?.name ?? 'Bina',
-                  floorLabel: _floor?.name ?? 'Kat',
-                  mapName: _map?.name ?? 'Harita',
-                  activeReference: _lastScan,
-                  emptyCount: emptyCount,
-                  fullCount: fullCount,
-                  totalCount: _occupancy.length,
-                  multiRoute: _multiRoute,
-                  activeSegmentIndex: _activeRouteSegmentIndex,
-                  onSegmentTap: (index) => unawaited(_showRouteSegment(index)),
-                  onOrganizationTap: _showOrganizationPicker,
-                  onSiteTap: _showSitePicker,
-                  onBuildingTap: _showBuildingPicker,
-                  onFloorTap: _showFloorPicker,
-                  onParkSelected: (park) {
-                    _sheetController.animateTo(ParkBottomSheet.peekSize,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOutCubic);
-                    setState(() {
-                      _targetPark = park;
-                      _route = null;
-                      _multiRoute = null;
-                    });
-                    if (_lastScan != null) unawaited(_updateRoute(_lastScan!));
-                  },
-                  onNavigateToExit: () {
-                    unawaited(_navigateToBestExit());
-                  },
-                  onNavigateToCar: () {
-                    if (_parkedAt == null || _lastScan == null) return;
-                    setState(() => _targetPark = _parkedAt);
-                    unawaited(_updateRoute(_lastScan!));
-                  },
-                  onClearNav: () => setState(() {
-                    _targetPark = null;
-                    _route = null;
-                    _multiRoute = null;
-                    _displayNodes = _map?.nodes ?? allNodes;
-                  }),
-                  onNearestToUser: () {
-                    if (_lastScan == null) return;
-                    final park = _pathfinder.nearestEmptyParkToUser(_lastScan!, _occupancy);
-                    if (park == null) return;
-                    setState(() {
-                      _targetPark = park;
-                      _multiRoute = null;
-                    });
-                    unawaited(_updateRoute(_lastScan!));
-                  },
-                  onNearestToHospital: () {
-                    unawaited(_selectParkingNearEntrance());
-                  },
-                ),
+                if (hasMap)
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: SizedBox(
+                      height: MediaQuery.of(context).size.height * ParkBottomSheet.fullSize,
+                      child: ParkBottomSheet(
+                        controller: _sheetController,
+                        occupancyMap: _occupancy,
+                        targetPark: _targetPark,
+                        parkedAt: _parkedAt,
+                        mapName: _map?.name ?? 'Harita',
+                        activeReference: _lastScan,
+                        emptyCount: emptyCount,
+                        fullCount: fullCount,
+                        totalCount: _occupancy.length,
+                        multiRoute: _multiRoute,
+                        activeSegmentIndex: _activeRouteSegmentIndex,
+                        onSegmentTap: (index) => unawaited(_showRouteSegment(index)),
+                        onParkSelected: (park) {
+                          _sheetController.animateTo(
+                            ParkBottomSheet.peekSize,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeOutCubic,
+                          );
+                          setState(() {
+                            _targetPark = park;
+                            _route = null;
+                            _multiRoute = null;
+                          });
+                          if (_lastScan != null) {
+                            unawaited(_updateRoute(_lastScan!));
+                          }
+                        },
+                        onNavigateToExit: () {
+                          unawaited(_navigateToBestExit());
+                        },
+                        onNavigateToCar: () {
+                          if (_parkedAt == null || _lastScan == null) {
+                            return;
+                          }
+                          setState(() => _targetPark = _parkedAt);
+                          unawaited(_updateRoute(_lastScan!));
+                        },
+                        onClearNav: () => setState(() {
+                          _targetPark = null;
+                          _route = null;
+                          _multiRoute = null;
+                          _displayNodes = _map?.nodes ?? allNodes;
+                        }),
+                        onNearestToUser: () {
+                          if (_lastScan == null) {
+                            return;
+                          }
+                          final park = _pathfinder.nearestEmptyParkToUser(_lastScan!, _occupancy);
+                          if (park == null) {
+                            return;
+                          }
+                          setState(() {
+                            _targetPark = park;
+                            _multiRoute = null;
+                          });
+                          unawaited(_updateRoute(_lastScan!));
+                        },
+                        onNearestToHospital: () {
+                          unawaited(_selectParkingNearEntrance());
+                        },
+                      ),
+                    ),
+                  ),
               ],
             ),
     );
   }
 }
 
-class _FloorOption {
-  const _FloorOption({
-    required this.site,
-    required this.building,
-    required this.floor,
+class _MapSelectionPanel extends StatelessWidget {
+  const _MapSelectionPanel({
+    required this.organizations,
+    required this.selectedOrganizationId,
+    required this.sites,
+    required this.selectedSiteId,
+    required this.buildings,
+    required this.selectedBuildingId,
+    required this.floors,
+    required this.selectedFloorId,
+    required this.onOrganizationChanged,
+    required this.onSiteChanged,
+    required this.onBuildingChanged,
+    required this.onFloorChanged,
   });
 
-  final SiteHierarchy site;
-  final BuildingHierarchy building;
-  final FloorHierarchy floor;
+  final List<OrganizationSummary> organizations;
+  final String? selectedOrganizationId;
+  final List<SiteHierarchy> sites;
+  final String? selectedSiteId;
+  final List<BuildingHierarchy> buildings;
+  final String? selectedBuildingId;
+  final List<FloorHierarchy> floors;
+  final String? selectedFloorId;
+  final ValueChanged<String?> onOrganizationChanged;
+  final ValueChanged<String?> onSiteChanged;
+  final ValueChanged<String?> onBuildingChanged;
+  final ValueChanged<String?> onFloorChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFF8FAFD),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFFE4EAF5)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Harita secin',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF182033),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'QR okutursaniz ilgili kat otomatik acilir. Elle secmek icin kurum, yerleske, bina ve kati belirleyin.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.5,
+                    color: Color(0xFF6E7890),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                _PickerField<OrganizationSummary>(
+                  label: 'Kurum',
+                  value: organizations.where((item) => item.id == selectedOrganizationId).firstOrNull,
+                  items: organizations,
+                  onChanged: (item) => onOrganizationChanged(item?.id),
+                  title: (item) => item.name,
+                ),
+                const SizedBox(height: 12),
+                _PickerField<SiteHierarchy>(
+                  label: 'Yerleske',
+                  value: sites.where((item) => item.id == selectedSiteId).firstOrNull,
+                  items: sites,
+                  onChanged: (item) => onSiteChanged(item?.id),
+                  title: (item) => item.name,
+                ),
+                const SizedBox(height: 12),
+                _PickerField<BuildingHierarchy>(
+                  label: 'Bina',
+                  value: buildings.where((item) => item.id == selectedBuildingId).firstOrNull,
+                  items: buildings,
+                  onChanged: (item) => onBuildingChanged(item?.id),
+                  title: (item) => item.name,
+                ),
+                const SizedBox(height: 12),
+                _PickerField<FloorHierarchy>(
+                  label: 'Kat',
+                  value: floors.where((item) => item.id == selectedFloorId).firstOrNull,
+                  items: floors,
+                  onChanged: (item) => onFloorChanged(item?.id),
+                  title: (item) => item.name,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PickerField<T> extends StatelessWidget {
+  const _PickerField({
+    required this.label,
+    required this.value,
+    required this.items,
+    required this.onChanged,
+    required this.title,
+  });
+
+  final String label;
+  final T? value;
+  final List<T> items;
+  final ValueChanged<T?> onChanged;
+  final String Function(T item) title;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<T>(
+      initialValue: value,
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: const Color(0xFFF5F7FB),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide.none,
+        ),
+      ),
+      items: items
+          .map(
+            (item) => DropdownMenuItem<T>(
+              value: item,
+              child: Text(
+                title(item),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          )
+          .toList(),
+      onChanged: items.isEmpty ? null : onChanged,
+    );
+  }
 }
